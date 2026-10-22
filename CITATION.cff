@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "civiqhub: Python package by CiviqHub"
+abstract: >-
+  Python package published to reserve the civiqhub name on PyPI.
+  Preview, not functional yet.
+authors:
+  - name: CiviqHub
+    website: "https://civiqhub.com"
+  - given-names: Yanis
+    family-names: Gomes
+    affiliation: CiviqHub
+version: 0.0.1
+license: MPL-2.0
+repository-code: "https://github.com/civiqhub/civiqhub-py"
+url: "https://civiqhub.com"
+keywords:
+  - civiqhub
+  - collective decision

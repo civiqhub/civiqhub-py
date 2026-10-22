@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "civiqhub"
+version = "0.0.1"
+description = "Python package by CiviqHub. Preview, not functional yet."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "CiviqHub", email = "contact@civiqhub.com" }]
+keywords = ["civiqhub", "collective decision"]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Sociology",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://civiqhub.com"
+Source = "https://github.com/civiqhub/civiqhub-py"
+Issues = "https://github.com/civiqhub/civiqhub-py/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/civiqhub"]
