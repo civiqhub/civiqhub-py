@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "civiqhub"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Python package by CiviqHub. Preview, not functional yet."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,6 +28,9 @@ dependencies = []
 Homepage = "https://civiqhub.com"
 Source = "https://github.com/civiqhub/civiqhub-py"
 Issues = "https://github.com/civiqhub/civiqhub-py/issues"
+
+[tool.hatch.version]
+path = "src/civiqhub/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/civiqhub"]
