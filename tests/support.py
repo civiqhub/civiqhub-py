@@ -19,9 +19,14 @@ tests built on it run wherever the package installs.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from civiqhub.model import FORMAT
+
+TOKEN = "civ_pat_synthetic0000"  # made up: no such token was ever issued
 
 AS_OF = "2026-01-01T00:00:00Z"
 MEMBERS = ("ps-ana", "ps-ben", "ps-chloe", "ps-dan")
@@ -172,3 +177,76 @@ def aggregated_payload() -> dict[str, Any]:
         for row in payload[section]:
             del row["author_id"]
     return payload
+
+
+class FakeApi:
+    """A stand-in for the product API: it serves a payload page by page, in memory.
+
+    It follows the provisional paths of ``ApiSource`` and records every URL asked.
+    ``answers`` forces a status, by path, to play a refusal or an outage.
+    """
+
+    def __init__(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        scope: str = "project",
+        detailed: bool = True,
+        page: int = 100,
+        answers: Mapping[str, tuple[int, Mapping[str, str]]] | None = None,
+    ) -> None:
+        self.payload = payload
+        self.scope = scope
+        self.detailed = detailed
+        self.page = page
+        self.answers = dict(answers or {})
+        self.calls: list[str] = []
+        self.queries: list[dict[str, str]] = []
+
+    def __call__(
+        self, url: str, headers: Mapping[str, str]
+    ) -> tuple[int, Mapping[str, str], bytes]:
+        parsed = urlparse(url)
+        query = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+        self.calls.append(url)
+        self.queries.append(query)
+        if headers.get("Authorization") != f"Bearer {TOKEN}":
+            return 401, {}, b"{}"
+        path = parsed.path.removeprefix("/v1")
+        if path in self.answers:
+            status, answered = self.answers[path]
+            return status, answered, b"{}"
+        parts = path.strip("/").split("/")
+        if parts == ["token"]:
+            held = "g-1" if self.scope == "group" else "demo"
+            return self._json({"kind": self.scope, "id": held, "as_of": "T0"})
+        if parts[0] == "groups" and parts[1] == "g-1":
+            if len(parts) == 2:
+                return self._json(self.payload["groups"][0])
+            return self._rows(self.payload["projects"], query)
+        if parts[0] != "projects" or parts[1] != "demo":
+            return 404, {}, b"{}"
+        if len(parts) == 2:
+            return self._json(self.payload["projects"][0])
+        section = {"votes/aggregates": "tallies"}.get("/".join(parts[2:]), parts[2])
+        if section in ("votes", "members") and not self.detailed:
+            return 403, {}, b"{}"
+        if section == "participation":
+            return self._json(self.payload["participation"][0])
+        return self._rows(self.payload[section], query)
+
+    def _rows(
+        self, rows: list[Any], query: Mapping[str, str]
+    ) -> tuple[int, Mapping[str, str], bytes]:
+        start = int(query.get("cursor", "0"))
+        more = start + self.page < len(rows)
+        return self._json(
+            {
+                "data": rows[start : start + self.page],
+                "next_cursor": str(start + self.page) if more else None,
+            }
+        )
+
+    @staticmethod
+    def _json(body: Any) -> tuple[int, Mapping[str, str], bytes]:
+        return 200, {}, json.dumps(body).encode()
