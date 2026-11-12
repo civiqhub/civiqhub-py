@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from civiqhub_selene.blocks import VoteMatrix
 
     from .analysis import Coclustering, ConsensusRanking, Count, Membership
+    from .regimes import ProposalRegime, Regimes
 
 FORMAT = "civiqhub.snapshot/0"
 SCORES: tuple[int, ...] = (-2, -1, 0, 1, 2)
@@ -444,6 +445,19 @@ class Project(Entity):
 
         return consensus(self, across=across)
 
+    def regimes(
+        self, *, gamma: float | None = None, low: float | None = None, high: float | None = None
+    ) -> Regimes:
+        """The collective regime of every Proposal, read on its current revision: a
+        directed consensus, the mixed zone or a dissensus.
+
+        Works at every exposure level, on the five counters alone. Needs the analysis
+        layer (``pip install "civiqhub[selene]"``), not NumPy.
+        """
+        from .regimes import regimes
+
+        return regimes(self, gamma=gamma, low=low, high=high)
+
     def save(self, path: str | Path) -> Path:
         """Write the snapshot behind this Project to a file that ``civiqhub.load`` reads back."""
         return self.snapshot.save(path)
@@ -507,6 +521,12 @@ class Proposal(Entity):
     @property
     def tally(self) -> VoteTally:
         return self.current.tally
+
+    def regime(
+        self, *, gamma: float | None = None, low: float | None = None, high: float | None = None
+    ) -> ProposalRegime:
+        """The collective regime of this Proposal, read on its current revision."""
+        return self.current.regime(gamma=gamma, low=low, high=high)
 
     @property
     def amendments(self) -> Listing[Amendment]:
@@ -616,6 +636,16 @@ class Revision(Entity):
     def tally(self) -> VoteTally:
         """Counts per score. Available at every exposure level."""
         return self.snapshot._tallies.get(self.id, VoteTally())
+
+    def regime(
+        self, *, gamma: float | None = None, low: float | None = None, high: float | None = None
+    ) -> ProposalRegime:
+        """The collective regime read on the votes of this revision: one of seven
+        labels, with the dissensus index behind it. When nobody voted, the answer says
+        so instead of naming a regime."""
+        from .regimes import regime
+
+        return regime(self, gamma=gamma, low=low, high=high)
 
 
 @dataclass(frozen=True, eq=False, repr=False, kw_only=True)

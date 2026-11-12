@@ -29,12 +29,17 @@ LAZY_NAMES = (
     "EntityCluster",
     "OpinionGroup",
     "ProposalBlock",
+    "ProposalRegime",
+    "Regimes",
     "Stance",
 )
 # The methods of the model that open onto the analysis layer, as written by a user.
 DOORS = {
     "vote_matrix": "project.vote_matrix",
     "cocluster": "project.cocluster",
+    "regimes": "project.regimes",
+    "proposal.regime": "project.proposals['p-1'].regime",
+    "revision.regime": "project.proposals['p-1'].revisions[0].regime",
 }
 
 

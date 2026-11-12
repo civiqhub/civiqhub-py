@@ -62,6 +62,7 @@ if TYPE_CHECKING:
         Stance,
     )
     from .citation import Analysis, Citation
+    from .regimes import ProposalRegime, Regimes
 
 __version__ = "0.0.1"
 
@@ -70,6 +71,8 @@ __version__ = "0.0.1"
 _NEEDS_SELENE = {
     "Analysis": "citation",
     "Citation": "citation",
+    "ProposalRegime": "regimes",
+    "Regimes": "regimes",
     "Coclustering": "analysis",
     "ConsensusRanking": "analysis",
     "EntityCluster": "analysis",
@@ -122,7 +125,9 @@ __all__ = [
     "Project",
     "Proposal",
     "ProposalBlock",
+    "ProposalRegime",
     "RateLimitedError",
+    "Regimes",
     "Revision",
     "Role",
     "Snapshot",
