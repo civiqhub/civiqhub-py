@@ -1,0 +1,91 @@
+classDiagram
+  direction TB
+  class Entity {
+    <<root>>
+    +id
+  }
+  class Load {
+    +as_of
+    +exposure_level
+    +pseudonym_scope
+    +content_digest()
+  }
+  class Source {
+    <<protocol>>
+    +fetch(container, exposure) Load
+  }
+  class Group {
+    +slug
+    +name
+  }
+  class Project {
+    +slug
+    +name
+  }
+  class Proposal
+  class Revision {
+    +number
+    +content_hash
+    +lineage_hash
+  }
+  class Amendment {
+    +status
+  }
+  class Argument {
+    +position
+    +text
+  }
+  class Vote {
+    +score
+  }
+  class Actant {
+    +pseudonym
+    +kind
+  }
+  class VoteDistribution {
+    <<value>>
+    +counts
+    +total
+  }
+  class Participation {
+    <<value>>
+  }
+  class Role {
+    <<enumeration>>
+  }
+  class CiviqTag
+  class CiviqTheme
+  Entity <|-- Group
+  Entity <|-- Project
+  Entity <|-- Proposal
+  Entity <|-- Revision
+  Entity <|-- Amendment
+  Entity <|-- Argument
+  Entity <|-- Vote
+  Entity <|-- Actant
+  Entity <|-- CiviqTag
+  Entity <|-- CiviqTheme
+  Source ..> Load : hands over
+  Load "1" o-- "0..*" Group
+  Load "1" o-- "0..*" Project
+  Group "0..1" o-- "0..*" Group : children
+  Group "0..1" o-- "0..*" Project : owns
+  Project "0..1" o-- "0..*" Project : forks
+  Project "0..*" o-- "0..*" Proposal : lists
+  Project "1" --> "1" Participation
+  Proposal "1" *-- "1..*" Revision : ordered
+  Proposal "1" --> "0..1" Revision : current
+  Revision "0..*" --> "0..*" Revision : parents
+  Revision "1" --> "0..1" VoteDistribution
+  Revision "1" o-- "0..*" Vote
+  Vote "0..*" --> "1" Actant
+  Amendment "1" *-- "1" Proposal : carrier
+  Amendment "0..*" --> "1" Proposal : target
+  Amendment "0..*" --> "1" Revision : target revision
+  Amendment "0..1" --> "0..1" Revision : adopted revision
+  Proposal "1" o-- "0..*" Argument
+  Argument "0..*" --> "0..1" Argument : parent
+  Argument "0..*" --> "0..1" Actant : author
+  Actant "0..*" --> "0..1" Role : in a container
+  CiviqTag "0..*" --> "0..*" Proposal : labels
+  CiviqTheme "0..*" --> "0..*" Project
