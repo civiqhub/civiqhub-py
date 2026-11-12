@@ -2,15 +2,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""CiviqHub for Python: read a Project with a token and navigate it.
+"""CiviqHub for Python: read a Project with a token, navigate it, analyse it.
 
     import civiqhub
 
-    project = civiqhub.connect().project()        # the token is read from CIVIQHUB_TOKEN
-    print(project.proposals["p-01"].tally)
+    project = civiqhub.connect(exposure="pseudonymised").project()
+    print(project.cocluster().summary())      # needs: pip install "civiqhub[selene]"
 
 Exploratory port of the v6 prototype, not a release: the public names are provisional,
-and the API that ``civiqhub.connect`` reads does not exist yet.
+the API that ``civiqhub.connect`` reads does not exist yet, and neither does the
+``civiqhub[selene]`` extra.
 """
 
 from typing import TYPE_CHECKING
@@ -52,6 +53,14 @@ from .model import (
 from .sources import ApiSource, FileSource, MemorySource, Source
 
 if TYPE_CHECKING:
+    from .analysis import (
+        Coclustering,
+        ConsensusRanking,
+        EntityCluster,
+        OpinionGroup,
+        ProposalBlock,
+        Stance,
+    )
     from .citation import Analysis, Citation
 
 __version__ = "0.0.1"
@@ -61,6 +70,12 @@ __version__ = "0.0.1"
 _NEEDS_SELENE = {
     "Analysis": "citation",
     "Citation": "citation",
+    "Coclustering": "analysis",
+    "ConsensusRanking": "analysis",
+    "EntityCluster": "analysis",
+    "OpinionGroup": "analysis",
+    "ProposalBlock": "analysis",
+    "Stance": "analysis",
 }
 
 
@@ -88,7 +103,10 @@ __all__ = [
     "Citation",
     "CiviqHubError",
     "Client",
+    "Coclustering",
+    "ConsensusRanking",
     "Entity",
+    "EntityCluster",
     "Exposure",
     "ExposureError",
     "FileSource",
@@ -98,15 +116,18 @@ __all__ = [
     "MemorySource",
     "MissingExtraError",
     "NotFoundError",
+    "OpinionGroup",
     "Participation",
     "Position",
     "Project",
     "Proposal",
+    "ProposalBlock",
     "RateLimitedError",
     "Revision",
     "Role",
     "Snapshot",
     "Source",
+    "Stance",
     "UnavailableError",
     "ValidationError",
     "Vote",

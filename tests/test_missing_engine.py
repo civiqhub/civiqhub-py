@@ -9,16 +9,33 @@ These tests run with or without the engine installed: they hide it first.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
+from support import small_payload
 
 from civiqhub import _selene
 from civiqhub.errors import MissingExtraError
 
 HINT = 'Install it with: pip install "civiqhub[selene]"'
-LAZY_NAMES = ("Analysis", "Citation")
+LAZY_NAMES = (
+    "Analysis",
+    "Citation",
+    "Coclustering",
+    "ConsensusRanking",
+    "EntityCluster",
+    "OpinionGroup",
+    "ProposalBlock",
+    "Stance",
+)
+# The methods of the model that open onto the analysis layer, as written by a user.
+DOORS = {
+    "vote_matrix": "project.vote_matrix",
+    "cocluster": "project.cocluster",
+}
 
 
 def _without_engine(code: str) -> list[str]:
@@ -53,3 +70,20 @@ def test_a_name_of_the_analysis_layer_asks_for_the_engine_on_first_use() -> None
         "        print(name, type(error).__name__, '|', error.__notes__[0])\n"
     )
     assert out == [f"{name} MissingExtraError | {HINT}" for name in LAZY_NAMES]
+
+
+def test_asking_for_an_analysis_without_the_engine_gives_the_command(tmp_path: Path) -> None:
+    path = tmp_path / "demo.json"
+    path.write_text(json.dumps(small_payload()), encoding="utf-8")
+    doors = ", ".join(f"{name!r}: {door}" for name, door in DOORS.items())
+    out = _without_engine(
+        "import civiqhub\n"
+        f"project = civiqhub.load({str(path)!r}).project()\n"
+        "print(len(project.proposals), len(project.votes))\n"  # the core is untouched
+        f"for name, door in {{{doors}}}.items():\n"
+        "    try:\n"
+        "        door()\n"
+        "    except ImportError as error:\n"
+        "        print(name, type(error).__name__, '|', error.__notes__[0])\n"
+    )
+    assert out == ["5 10", *(f"{name} MissingExtraError | {HINT}" for name in DOORS)]

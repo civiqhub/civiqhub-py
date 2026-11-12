@@ -20,9 +20,14 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 from pathlib import Path
-from typing import Any, ClassVar, Generic, TypeVar, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, overload
 
 from .errors import ExposureError, NotFoundError, ValidationError
+
+if TYPE_CHECKING:
+    from civiqhub_selene.blocks import VoteMatrix
+
+    from .analysis import Coclustering, ConsensusRanking, Count, Membership
 
 FORMAT = "civiqhub.snapshot/0"
 SCORES: tuple[int, ...] = (-2, -1, 0, 1, 2)
@@ -394,6 +399,50 @@ class Project(Entity):
                 else sent.get("n_voters")
             ),
         )
+
+    # what it computes: thin doors onto the analysis layer --------------------------
+    def vote_matrix(self, *, proposals: Iterable[Proposal] | None = None) -> VoteMatrix:
+        """The member x revision table of votes the analysis layer works on.
+
+        One column per proposal, on its current revision. An empty cell stays empty:
+        it is told apart as abstention or non-exposure when impressions are recorded.
+        """
+        from .analysis import vote_matrix
+
+        return vote_matrix(self, proposals=proposals)
+
+    def cocluster(
+        self,
+        *,
+        membership: Membership = "single",
+        groups: Count = "auto",
+        blocks: Count = "auto",
+        seed: int = 0,
+        proposals: Iterable[Proposal] | None = None,
+    ) -> Coclustering:
+        """Find the opinion groups of members and the blocks of proposals they vote alike on.
+
+        ``membership="single"``: each member belongs to one group. ``"mixed"``: a member
+        may side with different groups on different blocks. Needs the analysis layer
+        (``pip install "civiqhub[selene]"``). Always returns a ``Coclustering``: when
+        the Project cannot carry one, ``is_available()`` is false and it says why.
+        """
+        from .analysis import cocluster
+
+        return cocluster(
+            self,
+            membership=membership,
+            groups=groups,
+            blocks=blocks,
+            seed=seed,
+            proposals=proposals,
+        )
+
+    def consensus(self, *, across: Coclustering) -> ConsensusRanking:
+        """Rank the proposals by how far every opinion group of ``across`` agrees with them."""
+        from .analysis import consensus
+
+        return consensus(self, across=across)
 
     def save(self, path: str | Path) -> Path:
         """Write the snapshot behind this Project to a file that ``civiqhub.load`` reads back."""
