@@ -63,6 +63,7 @@ if TYPE_CHECKING:
     )
     from .citation import Analysis, Citation
     from .regimes import ProposalRegime, Regimes
+    from .synthetic import synthetic_project
 
 __version__ = "0.0.1"
 
@@ -79,6 +80,7 @@ _NEEDS_SELENE = {
     "OpinionGroup": "analysis",
     "ProposalBlock": "analysis",
     "Stance": "analysis",
+    "synthetic_project": "synthetic",
 }
 
 
@@ -140,4 +142,5 @@ __all__ = [
     "__version__",
     "connect",
     "load",
+    "synthetic_project",
 ]

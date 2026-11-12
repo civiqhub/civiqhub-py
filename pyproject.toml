@@ -61,5 +61,5 @@ ignore_missing_imports = true
 # Without the engine its types are unknown, so what the bridge returns from it
 # cannot be checked. With the engine installed these modules pass in full strict mode.
 [[tool.mypy.overrides]]
-module = ["civiqhub.citation", "civiqhub.analysis", "civiqhub.regimes"]
+module = ["civiqhub.citation", "civiqhub.analysis", "civiqhub.regimes", "civiqhub.synthetic"]
 warn_return_any = false
