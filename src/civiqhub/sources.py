@@ -95,6 +95,10 @@ class ApiSource(Source):
 
     The token is scoped to one container, a Project or a Group, and never gives more
     than its owner can see.
+
+    Provisional. The public API does not exist yet: the base URL, the paths, the
+    pagination, the token endpoint and the shape of the answers are assumptions taken
+    from the library mission. They will change when the product publishes its contract.
     """
 
     name = "api"
