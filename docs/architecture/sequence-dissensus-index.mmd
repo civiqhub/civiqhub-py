@@ -1,0 +1,21 @@
+sequenceDiagram
+  actor Analyst
+  participant Revision
+  participant Bridge as Analysis bridge
+  participant Engine as Estimator in civiqhub-selene
+  participant Result
+  Analyst->>Revision: regime()
+  Revision->>Bridge: regime(revision)
+  Bridge->>Revision: tally
+  Revision-->>Bridge: five counts
+  Bridge->>Engine: fit(counts, subject = revision id)
+  Engine->>Engine: check input, record provenance
+  alt no vote
+    Engine-->>Bridge: Result without value, reason no_votes, with provenance
+  else at least one vote
+    Engine->>Engine: compute index, contributions, median, label, margin
+    Engine-->>Bridge: Result with value and provenance, uncertainty = None
+  end
+  Bridge-->>Analyst: reading with its citation
+  Analyst->>Result: uncertainty
+  Result-->>Analyst: None

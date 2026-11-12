@@ -1,0 +1,24 @@
+sequenceDiagram
+  actor User
+  participant Entry as connect
+  participant Client
+  participant Api as API source
+  participant Http as Public API
+  participant Load
+  User->>Entry: connect()
+  Entry->>Api: create, token read from CIVIQHUB_TOKEN
+  Entry-->>User: client
+  User->>Client: project()
+  Client->>Api: fetch(container, exposure)
+  Api->>Http: GET what the token covers
+  Http-->>Api: scope and as-of
+  Api->>Http: GET project
+  loop each section, each page
+    Api->>Http: GET proposals, revisions, amendments, arguments, vote aggregates
+    Http-->>Api: rows and next cursor
+  end
+  Api->>Http: GET participation
+  Api-->>Client: rows of one load
+  Client->>Load: build and check invariants
+  Load-->>Client: load
+  Client-->>User: Project as of t

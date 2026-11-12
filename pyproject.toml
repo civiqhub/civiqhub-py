@@ -7,7 +7,7 @@ name = "civiqhub"
 dynamic = ["version"]
 description = "Python package by CiviqHub. Preview, not functional yet."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MPL-2.0"
 license-files = ["LICENSE"]
 authors = [{ name = "CiviqHub", email = "contact@civiqhub.com" }]
@@ -34,3 +34,32 @@ path = "src/civiqhub/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/civiqhub"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+filterwarnings = ["error"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".github"]  # release tooling, left as it is on this branch
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "PT", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/civiqhub", "tests"]
+
+# The analysis engine and NumPy are optional: type checking works without them.
+[[tool.mypy.overrides]]
+module = ["civiqhub_selene", "civiqhub_selene.*", "numpy", "numpy.*"]
+ignore_missing_imports = true
+
+# Without the engine its types are unknown, so what the bridge returns from it
+# cannot be checked. With the engine installed these modules pass in full strict mode.
+[[tool.mypy.overrides]]
+module = ["civiqhub.citation", "civiqhub.analysis", "civiqhub.regimes", "civiqhub.synthetic"]
+warn_return_any = false

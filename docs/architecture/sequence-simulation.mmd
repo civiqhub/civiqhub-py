@@ -1,0 +1,14 @@
+sequenceDiagram
+  actor Harness
+  participant Memory as Memory source
+  participant Client
+  participant Load
+  Harness->>Harness: write the rows by hand (a Project, Proposals, Revisions, two human members, one agent, votes)
+  Harness->>Memory: create(rows)
+  Harness->>Client: connect(source), then project()
+  Client->>Memory: fetch(container, exposure)
+  Memory-->>Client: rows
+  Client->>Load: build and check invariants
+  Load-->>Client: load
+  Client-->>Harness: Project as of t
+  Note over Harness,Load: To add one vote, the harness rewrites the rows and builds a new load

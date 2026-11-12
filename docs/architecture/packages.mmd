@@ -1,0 +1,24 @@
+flowchart TB
+  subgraph CORE[Core: standard library only]
+    MODEL[model: entities, values, collections]
+    ERRORS[errors]
+  end
+  subgraph ADAPTERS[Adapters]
+    SOURCES[sources: API, file, memory]
+    EXPORT[export: tables and graphs, optional]
+    INTEROP[interop, optional]
+    PLOT[plot, optional]
+  end
+  ANALYSIS[analysis bridge, optional]
+  CLIENT[client: entry points]
+  ENGINE[(civiqhub-selene, separate package)]
+  MODEL --> ERRORS
+  SOURCES --> MODEL
+  SOURCES --> ERRORS
+  EXPORT --> MODEL
+  INTEROP --> MODEL
+  PLOT --> MODEL
+  ANALYSIS --> MODEL
+  ANALYSIS -.-> ENGINE
+  CLIENT --> SOURCES
+  CLIENT --> MODEL
