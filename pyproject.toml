@@ -34,3 +34,21 @@ path = "src/civiqhub/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/civiqhub"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+filterwarnings = ["error"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".github"]  # release tooling, left as it is on this branch
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "PT", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/civiqhub", "tests"]
