@@ -52,3 +52,8 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "PT", "RUF"]
 python_version = "3.11"
 strict = true
 files = ["src/civiqhub", "tests"]
+
+# The analysis engine and NumPy are optional: type checking works without them.
+[[tool.mypy.overrides]]
+module = ["civiqhub_selene", "civiqhub_selene.*", "numpy", "numpy.*"]
+ignore_missing_imports = true
