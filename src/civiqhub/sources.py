@@ -156,7 +156,7 @@ class ApiSource(Source):
         self._transport = transport or self._urllib
 
     def describe(self) -> str:
-        return f"api {self.base_url}, token {TOKEN_PREFIX}...{self._token[-4:]}"
+        return f"api {self.base_url}"
 
     # reading -----------------------------------------------------------------------
     def fetch(self, container: str | None = None, *, exposure: Exposure) -> Payload:

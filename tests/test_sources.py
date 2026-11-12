@@ -147,7 +147,9 @@ def test_the_token_is_read_from_the_environment_and_never_shown(
     assert TOKEN not in snapshot.source
     assert TOKEN not in repr(snapshot)
     assert TOKEN not in json.dumps(payload)
-    assert source.describe().startswith(f"api {DEFAULT_URL}")
+    # not even its last characters: a description ends up in citations, which are published
+    assert source.describe() == f"api {DEFAULT_URL}"
+    assert TOKEN[-4:] not in repr(source) + snapshot.source + repr(snapshot)
 
 
 @pytest.mark.parametrize(
