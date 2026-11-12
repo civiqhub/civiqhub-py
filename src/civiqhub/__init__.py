@@ -13,6 +13,8 @@ Exploratory port of the v6 prototype, not a release: the public names are provis
 and the API that ``civiqhub.connect`` reads does not exist yet.
 """
 
+from typing import TYPE_CHECKING
+
 from .client import Client, connect, load
 from .errors import (
     AuthenticationError,
@@ -49,7 +51,28 @@ from .model import (
 )
 from .sources import ApiSource, FileSource, MemorySource, Source
 
+if TYPE_CHECKING:
+    from .citation import Analysis, Citation
+
 __version__ = "0.0.1"
+
+# Names that need the analysis layer. They are resolved on first use, so that
+# ``import civiqhub`` works, and stays light, when the extra is not installed.
+_NEEDS_SELENE = {
+    "Analysis": "citation",
+    "Citation": "citation",
+}
+
+
+def __getattr__(name: str) -> object:
+    if name in _NEEDS_SELENE:
+        from importlib import import_module
+
+        value = getattr(import_module(f".{_NEEDS_SELENE[name]}", __name__), name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "Actant",
@@ -57,10 +80,12 @@ __all__ = [
     "Agent",
     "Amendment",
     "AmendmentStatus",
+    "Analysis",
     "ApiSource",
     "Argument",
     "AuthenticationError",
     "CellState",
+    "Citation",
     "CiviqHubError",
     "Client",
     "Entity",
