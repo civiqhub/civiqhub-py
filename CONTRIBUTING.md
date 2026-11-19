@@ -48,14 +48,31 @@ Each estimator or algorithm ships with:
 
 Results will describe the group and decide nothing. Outputs computed on CiviqHub data will respect the project's exposure policy and show other members only as groups above a minimum size.
 
+## Documentation
+
+The documentation site is built from the Markdown pages under [`docs/`](docs) and from the docstrings. [`docs/README.md`](docs/README.md) says how to build it and how to write a page. Three rules are checked by the CI:
+
+- a public module declares its `__all__` and has a page in the reference;
+- every Python block of `README.md` and of the pages runs, and prints the output the page shows;
+- the site builds without a warning.
+
 ## Development workflow
 
 ```bash
 git clone https://github.com/civiqhub/civiqhub-py
 cd civiqhub-py
 python -m venv .venv && source .venv/bin/activate
-pip install -e . pytest
+pip install -e . --group dev
+ruff check && ruff format --check
+mypy
 pytest
+```
+
+To build the documentation site, with Python 3.13 or later:
+
+```bash
+pip install -e . --group docs
+python -m sphinx -W -b html docs docs/_build/html
 ```
 
 1. Open an issue describing the change, unless it is a small fix.
