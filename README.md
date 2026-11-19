@@ -12,6 +12,10 @@ Python package by [CiviqHub](https://civiqhub.com).
 pip install civiqhub
 ```
 
+## Documentation
+
+The documentation is published at <https://civiqhub.github.io/civiqhub-py/>, with one version per release and one for the development branch. [`docs/README.md`](docs/README.md) says how to build it.
+
 ## Citing
 
 Citation metadata lives in [`CITATION.cff`](CITATION.cff); on GitHub, the "Cite this repository" button exports it as BibTeX or APA.

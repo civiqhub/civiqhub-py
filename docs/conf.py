@@ -7,6 +7,7 @@
 How the site is organised and how to build it: see ``docs/README.md``.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -32,7 +33,7 @@ extensions = [
 ]
 
 # docs/README.md is read on GitHub; it explains the site and is not a page of it.
-exclude_patterns = ["_build", "_ext", "README.md"]
+exclude_patterns = ["_build", "_ext", "_templates", "README.md"]
 
 # -- Pages (Markdown, read by MyST) ---------------------------------------------------
 
@@ -68,15 +69,37 @@ nitpick_ignore_regex = [
 
 # -- HTML -----------------------------------------------------------------------------
 
+# The published site holds one folder per version, built by
+# .github/scripts/build-docs-site.py, which sets CIVIQHUB_DOCS_CHANNEL to "dev" for the
+# development branch and to "release" for a release.
+is_development = os.environ.get("CIVIQHUB_DOCS_CHANNEL", "") == "dev" or "dev" in release
+
 html_theme = "furo"
 html_title = f"civiqhub {release}"
+templates_path = ["_templates"]
+html_static_path = ["_static"]
+html_css_files = ["version-switcher.css"]
+html_js_files = ["version-switcher.js"]
+# The sidebar of the theme, with the version selector under the name of the site.
+html_sidebars = {
+    "**": [
+        "sidebar/brand.html",
+        "sidebar/version-switcher.html",
+        "sidebar/search.html",
+        "sidebar/scroll-start.html",
+        "sidebar/navigation.html",
+        "sidebar/ethical-ads.html",
+        "sidebar/scroll-end.html",
+        "sidebar/variant-selector.html",
+    ]
+}
 html_theme_options = {
     "source_repository": "https://github.com/civiqhub/civiqhub-py/",
-    "source_branch": "develop",
+    "source_branch": "develop" if is_development else "main",
     "source_directory": "docs/",
 }
-if "dev" in release:
+if is_development:
     html_theme_options["announcement"] = (
-        f"This is the documentation of the development version {release}. "
+        f"This is the documentation of the development branch ({release}). "
         "It describes work that is not released yet."
     )

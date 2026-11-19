@@ -1,0 +1,54 @@
+name: docs
+
+# Publishes the documentation site to GitHub Pages, with one folder per version: the
+# release that main holds, the earlier release tags, and the development branch. It runs
+# when one of the two branches moves, never on a pull request.
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One publication at a time: a newer one waits for the one in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # The address of the published site. Change it here when the site moves.
+  SITE_URL: https://civiqhub.github.io/civiqhub-py/
+
+jobs:
+  build:
+    name: build every version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every branch and every tag: each version is built from its own commit.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: python .github/scripts/build-docs-site.py --output _site --base-url "$SITE_URL"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site/
+
+  # The only job that can write: it publishes the artifact built above.
+  deploy:
+    name: publish to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
