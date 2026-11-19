@@ -7,5 +7,5 @@ from importlib.metadata import version
 import civiqhub
 
 
-def test_version_is_exposed():
+def test_version_is_exposed() -> None:
     assert civiqhub.__version__ == version("civiqhub")

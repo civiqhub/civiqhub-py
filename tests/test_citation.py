@@ -10,7 +10,7 @@ import civiqhub
 CITATION = pathlib.Path(__file__).resolve().parents[1] / "CITATION.cff"
 
 
-def test_citation_version_matches_package():
+def test_citation_version_matches_package() -> None:
     text = CITATION.read_text(encoding="utf-8")
     match = re.search(r'^version:\s*"?([^"\s]+)"?\s*$', text, re.MULTILINE)
     assert match is not None

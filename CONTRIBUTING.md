@@ -54,7 +54,9 @@ Results will describe the group and decide nothing. Outputs computed on CiviqHub
 git clone https://github.com/civiqhub/civiqhub-py
 cd civiqhub-py
 python -m venv .venv && source .venv/bin/activate
-pip install -e . pytest
+pip install -e . --group dev
+ruff check && ruff format --check
+mypy
 pytest
 ```
 
