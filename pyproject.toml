@@ -26,6 +26,7 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://civiqhub.com"
+Documentation = "https://civiqhub.github.io/civiqhub-py/"
 Source = "https://github.com/civiqhub/civiqhub-py"
 Issues = "https://github.com/civiqhub/civiqhub-py/issues"
 
@@ -69,4 +70,4 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "PT", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", ".github/scripts/build-docs-site.py"]

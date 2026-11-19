@@ -1,0 +1,28 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public */
+/* License, v. 2.0. If a copy of the MPL was not distributed with this */
+/* file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* The version selector of the sidebar, in the colours of the theme. */
+.version-switcher {
+  padding: 0 var(--sidebar-item-spacing-horizontal) var(--sidebar-item-spacing-vertical);
+}
+
+.version-switcher label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--color-sidebar-caption-text);
+  font-size: var(--sidebar-caption-font-size);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.version-switcher select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-sidebar-search-border);
+  border-radius: 0.25rem;
+  background: var(--color-sidebar-search-background);
+  color: var(--color-sidebar-search-text);
+  font: inherit;
+  font-size: var(--sidebar-item-font-size);
+}

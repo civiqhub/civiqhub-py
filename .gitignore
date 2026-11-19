@@ -6,3 +6,4 @@ build/
 *.egg-info/
 .pytest_cache/
 docs/_build/
+_site/

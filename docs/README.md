@@ -14,7 +14,9 @@ python -m pip install -e . --group docs
 python -m sphinx -W -b html docs docs/_build/html
 ```
 
-Then open `docs/_build/html/index.html`. The option `-W` turns every warning into an error: this is how the CI builds the site, in the `documentation` job.
+Then open `docs/_build/html/index.html`. The option `-W` turns every warning into an error, as in the CI.
+
+This builds the documentation of the code you have, as one site without versions. The published site holds several versions: see [How the site is published](#how-the-site-is-published).
 
 ## What is where
 
@@ -22,11 +24,38 @@ Then open `docs/_build/html/index.html`. The option `-W` turns every warning int
 | --- | --- |
 | `conf.py` | The configuration of Sphinx |
 | `_ext/civiqhub_docs.py` | A local Sphinx extension; its docstring says what it does |
+| `_templates/sidebar/version-switcher.html`, `_static/version-switcher.js`, `_static/version-switcher.css` | The version selector of the sidebar |
 | `index.md` | The home page and the table of contents of the site |
 | `reference/` | The reference: one page per public module, generated from the docstrings |
 | `_build/` | The output of the build. Not committed |
 
 The guide (getting started, a map of the library, the architecture) is planned and not written yet.
+
+## How the site is published
+
+The workflow `.github/workflows/docs.yml` publishes the site to GitHub Pages, at <https://civiqhub.github.io/civiqhub-py/>. It runs when `develop` or `main` moves, and it can be started by hand: Actions, workflow `docs`, "Run workflow". It never runs on a pull request.
+
+The published site holds one folder per version:
+
+| Folder | Built from | Shown in the selector as |
+| --- | --- | --- |
+| `X.Y.Z/` | `main`, for the version `main` holds | `X.Y.Z (latest release)` |
+| `X.Y.Z/` | The tag `vX.Y.Z`, for each earlier release | `X.Y.Z` |
+| `dev/` | `develop` | `dev (development branch)` |
+
+A commit without `docs/conf.py` holds no documentation and is left out: this is the case of `main` and of the tag `v0.0.1` today. The address of the site redirects to the latest release, or to `dev` as long as `main` holds no documentation.
+
+Every publication rebuilds every version, each from its own commit and with the tools this commit pins: GitHub Pages replaces the whole site each time. The script is `.github/scripts/build-docs-site.py`. It reads the version of each commit in `src/civiqhub/__init__.py`. Run it to build the site as it is published, from the references of your clone:
+
+```bash
+git fetch origin develop main --tags
+python .github/scripts/build-docs-site.py --output _site
+python -m http.server --directory _site
+```
+
+The version selector of the sidebar reads `versions.json`, a file the script writes next to the folders. It only appears on the published site, or behind a web server as above: a page opened from the disk has no selector. The `documentation` job of the CI runs the same script on the commit of the pull request alone, and keeps the result as the artifact `docs-html`.
+
+A release needs nothing more for its documentation: when `main` receives the release, the site gains its folder. To change the address of the site, change `SITE_URL` in the workflow and the `Documentation` address in `pyproject.toml`.
 
 ## Five rules
 
@@ -140,4 +169,4 @@ A module whose name starts with an underscore is internal and has no page. An un
 | `cross-reference target not found` (`myst.xref_missing`) | A Markdown link points to a page or a heading that does not exist | Fix the link |
 | `Unexpected indentation`, `Block quote ends without a blank line` | A docstring is not valid reStructuredText | Put an empty line before and after a list or an indented block; write `::` before a literal block |
 
-The site is built without network access, and it does not link to the documentation of Python.
+Sphinx reads no other site during a build, and the site does not link to the documentation of Python.
