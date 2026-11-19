@@ -34,6 +34,14 @@ test = ["pytest>=9.1"]
 # mypy also checks the tests, so it needs pytest.
 lint = [{ include-group = "test" }, "ruff==0.17.2", "mypy==2.4.0"]
 dev = [{ include-group = "lint" }, "build>=1.6", "twine>=7.0"]
+# The documentation site (docs/). Sphinx 9 needs Python 3.13, so this group stays out of
+# dev. Sphinx and sphinxcontrib-mermaid are BSD-2-Clause; MyST-Parser and Furo are MIT.
+docs = [
+  "sphinx==9.2.0",
+  "myst-parser==5.2.0",
+  "furo==2025.12.19",
+  "sphinxcontrib-mermaid==2.1.1",
+]
 
 [tool.hatch.version]
 path = "src/civiqhub/__init__.py"

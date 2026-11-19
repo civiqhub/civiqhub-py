@@ -9,4 +9,5 @@ This release reserves the package name and only exposes ``__version__``.
 
 __all__ = ["__version__"]
 
+#: Version of the package, in PEP 440 notation.
 __version__ = "0.0.1"
