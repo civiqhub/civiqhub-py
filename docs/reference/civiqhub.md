@@ -26,4 +26,5 @@ civiqhub.values
 civiqhub.listing
 civiqhub.entities
 civiqhub.dataset
+civiqhub.sources
 ```

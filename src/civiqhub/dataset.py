@@ -638,23 +638,7 @@ class Dataset:
             ValidationError: The file is not JSON, or not in the format :data:`FORMAT`.
         """
         target = Path(path)
-        if not target.is_file():
-            raise NotFoundError(
-                f"There is no dataset file at {str(target)!r}.",
-                hint="Check the path; Dataset.save writes such a file.",
-            )
-        try:
-            rows = json.loads(target.read_text(encoding="utf-8"))
-        except (UnicodeDecodeError, ValueError) as error:
-            raise ValidationError(
-                f"The file {target.name!r} is not a dataset file: it is not JSON ({error})."
-            ) from None
-        if not isinstance(rows, dict):
-            raise ValidationError(
-                f"The file {target.name!r} is not a dataset file: it holds a JSON "
-                f"{type(rows).__name__}, not a dictionary of sections."
-            )
-        return cls(rows, source=f"file {target.name}")
+        return cls(_read_file(target), source=f"file {target.name}")
 
     @property
     def as_of(self) -> str:
@@ -896,6 +880,27 @@ def _copy(rows: object) -> _Row:
         raise ValidationError(f"The rows of a dataset are JSON data: {error}.") from None
     copy: _Row = json.loads(text)
     return copy
+
+
+def _read_file(path: Path) -> _Row:
+    """Read the rows of a dataset file, without checking them against the model."""
+    if not path.is_file():
+        raise NotFoundError(
+            f"There is no dataset file at {str(path)!r}.",
+            hint="Check the path; Dataset.save writes such a file.",
+        )
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValidationError(
+            f"The file {path.name!r} is not a dataset file: it is not JSON ({error})."
+        ) from None
+    if not isinstance(rows, dict):
+        raise ValidationError(
+            f"The file {path.name!r} is not a dataset file: it holds a JSON "
+            f"{type(rows).__name__}, not a dictionary of sections."
+        )
+    return rows
 
 
 def _section(data: _Row, name: str) -> list[_Row]:
