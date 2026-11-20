@@ -11,15 +11,15 @@ from typing import ClassVar
 import pytest
 
 import civiqhub
+from civiqhub.dataset import Dataset
 from civiqhub.entities import Entity
 from civiqhub.listing import Listing
+from support import minimal_rows
 
 
-class FakeDataset:
-    """A synthetic stand-in for a dataset, with a repr that must never leak."""
-
-    def __repr__(self) -> str:
-        return "FakeDataset(token=not-a-real-token)"
+def make_dataset() -> Dataset:
+    """Return a new dataset, built from the minimal rows."""
+    return Dataset(minimal_rows(), source="file")
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
@@ -40,7 +40,7 @@ class SpecialThing(Thing):
     noun: ClassVar[str] = "special thing"
 
 
-DATASET = FakeDataset()
+DATASET = make_dataset()
 
 
 def test_entity_is_exported_by_the_package() -> None:
@@ -57,7 +57,7 @@ def test_two_entities_with_the_same_class_id_and_dataset_are_equal() -> None:
 
 
 def test_an_entity_from_another_dataset_differs() -> None:
-    assert Thing(id="t-1", dataset=DATASET) != Thing(id="t-1", dataset=FakeDataset())
+    assert Thing(id="t-1", dataset=DATASET) != Thing(id="t-1", dataset=make_dataset())
 
 
 def test_an_entity_with_another_id_differs() -> None:
@@ -86,7 +86,7 @@ def test_an_entity_is_frozen() -> None:
     with pytest.raises(dataclasses.FrozenInstanceError):
         thing.id = "t-2"  # type: ignore[misc]
     with pytest.raises(dataclasses.FrozenInstanceError):
-        thing.dataset = FakeDataset()  # type: ignore[misc]
+        thing.dataset = make_dataset()  # type: ignore[misc]
 
 
 def test_the_fields_are_given_by_keyword_only() -> None:
@@ -104,8 +104,8 @@ def test_repr_shows_the_class_the_id_and_the_label() -> None:
 def test_repr_holds_on_one_line_and_hides_the_dataset() -> None:
     shown = repr(Thing(id="t-1", dataset=DATASET, name="Two\nlines"))
     assert "\n" not in shown
-    assert "FakeDataset" not in shown
-    assert "token" not in shown
+    assert "Dataset" not in shown
+    assert "file" not in shown
 
 
 def test_noun_names_the_entity_in_messages() -> None:
@@ -117,5 +117,5 @@ def test_noun_names_the_entity_in_messages() -> None:
 def test_entities_go_in_a_listing() -> None:
     things = Listing([Thing(id="t-1", dataset=DATASET), Thing(id="t-2", dataset=DATASET)])
     assert Thing(id="t-1", dataset=DATASET) in things
-    assert Thing(id="t-1", dataset=FakeDataset()) not in things
+    assert Thing(id="t-1", dataset=make_dataset()) not in things
     assert things["t-2"] == Thing(id="t-2", dataset=DATASET)

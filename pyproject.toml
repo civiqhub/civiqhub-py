@@ -53,6 +53,8 @@ packages = ["src/civiqhub"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers", "-ra"]
+# The tests import their shared rows from tests/support.py.
+pythonpath = ["tests"]
 xfail_strict = true
 filterwarnings = ["error"]
 markers = ["engine: tests that need civiqhub-selene"]
