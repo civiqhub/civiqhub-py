@@ -51,6 +51,9 @@ EXPECTED = [
     "__version__",
     "connect",
     "load",
+    "make_project",
+    "make_rows",
+    "make_truth",
 ]
 
 

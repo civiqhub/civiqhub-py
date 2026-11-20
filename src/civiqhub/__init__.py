@@ -19,6 +19,9 @@ of the product, :class:`~civiqhub.entities.Group`, :class:`~civiqhub.entities.Pr
 :class:`~civiqhub.entities.Agent`) and :class:`~civiqhub.entities.Vote`. They share
 :class:`~civiqhub.listing.Listing` and :class:`~civiqhub.entities.Entity`, carry the values
 of :mod:`civiqhub.values`, and raise the errors of :mod:`civiqhub.errors`.
+
+:func:`~civiqhub.synthetic.make_project` gives a synthetic Project, which describes
+nobody, to try the SDK without a token.
 """
 
 from .client import Client, connect, load
@@ -48,6 +51,7 @@ from .errors import (
 )
 from .listing import Listing
 from .sources import ApiSource, FileSource, MemorySource, Source
+from .synthetic import make_project, make_rows, make_truth
 from .values import (
     ActantKind,
     AmendmentStatus,
@@ -97,6 +101,9 @@ __all__ = [
     "__version__",
     "connect",
     "load",
+    "make_project",
+    "make_rows",
+    "make_truth",
 ]
 
 #: Version of the package, in PEP 440 notation.
