@@ -16,6 +16,9 @@ articles (``articles``, ``article_versions``, ``paragraphs``, ``placements`` and
 ``citations``) are kept as they are. They count
 in the fingerprint and come back from :meth:`Dataset.to_dict`, but no object is built from
 them yet.
+
+:meth:`Dataset.save` writes the rows to a JSON file, and :meth:`Dataset.from_file` reopens
+it, with the same fingerprint.
 """
 
 import hashlib
@@ -23,6 +26,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import fields
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, TypeVar
 
 from .entities import (
@@ -619,6 +623,39 @@ class Dataset:
         """
         return cls(rows, source=source)
 
+    @classmethod
+    def from_file(cls, path: str | Path) -> "Dataset":
+        """Open a dataset that :meth:`save` wrote, without network and without token.
+
+        The dataset that comes back has the same fingerprint as the one saved, and the
+        source ``"file <name of the file>"``.
+
+        Args:
+            path: The path of the file.
+
+        Raises:
+            NotFoundError: No file is at this path.
+            ValidationError: The file is not JSON, or not in the format :data:`FORMAT`.
+        """
+        target = Path(path)
+        if not target.is_file():
+            raise NotFoundError(
+                f"There is no dataset file at {str(target)!r}.",
+                hint="Check the path; Dataset.save writes such a file.",
+            )
+        try:
+            rows = json.loads(target.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, ValueError) as error:
+            raise ValidationError(
+                f"The file {target.name!r} is not a dataset file: it is not JSON ({error})."
+            ) from None
+        if not isinstance(rows, dict):
+            raise ValidationError(
+                f"The file {target.name!r} is not a dataset file: it holds a JSON "
+                f"{type(rows).__name__}, not a dictionary of sections."
+            )
+        return cls(rows, source=f"file {target.name}")
+
     @property
     def as_of(self) -> str:
         """The instant that the data describes, in ISO 8601 and in UTC."""
@@ -731,6 +768,27 @@ class Dataset:
     def to_dict(self) -> dict[str, Any]:
         """Return a copy of the rows, ready for ``json.dump``."""
         return _copy(self._rows)
+
+    def save(self, path: str | Path) -> Path:
+        """Write the rows of the dataset to a JSON file, which :meth:`from_file` reopens.
+
+        The file holds exactly the rows, in UTF-8, with sorted keys: every section,
+        including the articles and their versions as the source gave them. It holds
+        neither a token nor the source. A pseudonymised file holds individual votes
+        under pseudonyms: share it as the exposure policy of the Project allows, and
+        never commit it to a public repository.
+
+        Args:
+            path: Where to write the file. An existing file is replaced.
+
+        Returns:
+            The path of the file.
+        """
+        target = Path(path)
+        text = json.dumps(self._rows, indent=1, sort_keys=True)
+        # The same bytes on every system: no line ending is translated.
+        target.write_text(text, encoding="utf-8", newline="\n")
+        return target
 
     def fingerprint(self) -> str:
         """Return a short digest of the rows: the same rows give the same fingerprint.
