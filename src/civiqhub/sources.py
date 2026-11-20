@@ -25,7 +25,6 @@ builds a dataset from it, and nothing in the package changes.
 
 import copy
 import json
-import math
 import os
 import urllib.error
 import urllib.request
@@ -536,7 +535,8 @@ def _retry_after(headers: Mapping[str, str]) -> float | None:
                 wait = float(value)
             except (TypeError, ValueError):
                 return None
-            return wait if math.isfinite(wait) and wait >= 0 else None
+            # A delay that is negative, infinite or not a number is no delay.
+            return wait if 0 <= wait < float("inf") else None
     return None
 
 
