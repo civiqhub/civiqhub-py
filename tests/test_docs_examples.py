@@ -32,7 +32,8 @@ _NOT_RUN = "<!-- not run:"
 _NEEDS_ENGINE = re.compile(r"\b(civiqhub_selene|civiqhub\.analysis)\b")
 
 # Pages, relative to the root of the repository, whose blocks another test runs.
-RUN_ELSEWHERE: frozenset[str] = frozenset()
+# tests/test_snippets.py runs them against a fake API.
+RUN_ELSEWHERE: frozenset[str] = frozenset({"README.md", "docs/snippets.md"})
 
 
 @dataclass(frozen=True)
@@ -130,8 +131,9 @@ def test_the_python_blocks_of_a_page_run_and_print_what_the_page_shows(page: Pat
 
 
 def test_the_documentation_pages_are_found() -> None:
-    names = {page.relative_to(ROOT).as_posix() for page in pages()}
+    names = {page.relative_to(ROOT).as_posix() for page in pages()} | RUN_ELSEWHERE
     assert "README.md" in names
+    assert (ROOT / "README.md").is_file()
     if DOCS.is_dir():  # the source distribution ships the tests without the pages
         assert "docs/index.md" in names
 
