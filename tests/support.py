@@ -10,11 +10,20 @@ ticket of the model adds the sections it builds.
     demo-collective (g-1)
       budget-circle (g-2)
         budget-2027: Budget participatif
-          p-01  r1, then r2 (current_revision_id given)
+          p-01  r1, then r2 (current_revision_id given), produced by the adoption of p-04
+            p-04  amendment on p-01.r1, adopted
+            p-05  amendment on p-01.r2, open
+              p-06  amendment on p-05.r1, open and stale
           p-02  r1, then r2 (no current_revision_id: r2 is current)
           p-03  r1, without a row of vote counts
-          a-01  r1, to amend p-01
-          a-02  r1, to amend p-02
+
+    Arguments on p-01, in two threads:
+      arg-1          depth 0
+        arg-2        depth 1
+          arg-3      depth 2
+      arg-4          depth 0
+        arg-5        depth 1
+        arg-6        depth 1
 """
 
 from typing import Any
@@ -27,9 +36,9 @@ AS_OF = "2026-11-16T09:00:00Z"
 PARTICIPATION: dict[str, Any] = {
     "project_id": "budget-2027",
     "n_proposals": 3,
-    "n_amendments": 2,
-    "n_arguments": 4,
-    "n_votes": 15,
+    "n_amendments": 3,
+    "n_arguments": 6,
+    "n_votes": 16,
     "n_actants": 8,
     "n_voters": 6,
 }
@@ -40,19 +49,21 @@ PROPOSALS: tuple[tuple[str, str, str | None, str, str | None], ...] = (
     ("p-01", "budget-2027", "art-1", "2026-10-01T08:00:00Z", "p-01.r2"),
     ("p-02", "budget-2027", "art-1", "2026-10-02T08:00:00Z", None),
     ("p-03", "budget-2027", None, "2026-10-03T08:00:00Z", None),
-    ("a-01", "budget-2027", None, "2026-10-04T08:00:00Z", None),
-    ("a-02", "budget-2027", None, "2026-10-05T08:00:00Z", None),
+    ("p-04", "budget-2027", None, "2026-10-04T08:00:00Z", None),
+    ("p-05", "budget-2027", None, "2026-10-05T08:00:00Z", None),
+    ("p-06", "budget-2027", None, "2026-10-06T08:00:00Z", None),
 )
 
 # (id, proposal, number, affirmation, amendment whose adoption produced it)
 REVISIONS: tuple[tuple[str, str, int, str, str | None], ...] = (
     ("p-01.r1", "p-01", 1, "Plant 100 trees in the parks.", None),
-    ("p-01.r2", "p-01", 2, "Plant 150 trees in the parks.", "am-01"),
+    ("p-01.r2", "p-01", 2, "Plant 150 trees in the parks.", "am-04"),
     ("p-02.r1", "p-02", 1, "Open the library on Sundays.", None),
     ("p-02.r2", "p-02", 2, "Open the library on Sundays and holidays.", None),
     ("p-03.r1", "p-03", 1, "Light the cycle paths at night.", None),
-    ("a-01.r1", "a-01", 1, "Raise the number of trees to 150.", None),
-    ("a-02.r1", "a-02", 1, "Open the library on holidays too.", None),
+    ("p-04.r1", "p-04", 1, "Raise the number of trees to 150.", None),
+    ("p-05.r1", "p-05", 1, "Plant the trees along the river.", None),
+    ("p-06.r1", "p-06", 1, "Plant them on both banks.", None),
 )
 
 # The counts of each revision, from score -2 to score +2. p-03.r1 has no row.
@@ -61,9 +72,78 @@ VOTE_COUNTS: dict[str, list[int]] = {
     "p-01.r2": [1, 0, 1, 2, 2],
     "p-02.r1": [0, 0, 1, 1, 0],
     "p-02.r2": [0, 1, 1, 1, 1],
-    "a-01.r1": [0, 0, 0, 1, 2],
-    "a-02.r1": [1, 1, 0, 0, 0],
+    "p-04.r1": [0, 0, 0, 1, 2],
+    "p-05.r1": [1, 1, 0, 0, 0],
+    "p-06.r1": [0, 0, 1, 0, 0],
 }
+
+AMENDMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "am-04",
+        "proposal_id": "p-04",
+        "target_proposal_id": "p-01",
+        "target_revision_id": "p-01.r1",
+        "status": "adopted",
+        "adopted_revision_id": "p-01.r2",
+    },
+    {
+        "id": "am-05",
+        "proposal_id": "p-05",
+        "target_proposal_id": "p-01",
+        "target_revision_id": "p-01.r2",
+        "status": "OPEN",
+    },
+    {
+        "id": "am-06",
+        "proposal_id": "p-06",
+        "target_proposal_id": "p-05",
+        "target_revision_id": "p-05.r1",
+        "status": "open",
+        "stale": True,
+    },
+)
+
+# The rows are not in depth-first order: the dataset puts them in it.
+ARGUMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "arg-1",
+        "proposal_id": "p-01",
+        "revision_id": "p-01.r1",
+        "position": "PRO",
+        "text": "More shade in the summer.",
+        "score": 2,
+        "n_supports": 3,
+    },
+    {"id": "arg-4", "proposal_id": "p-01", "position": "con", "text": "The budget is tight."},
+    {
+        "id": "arg-2",
+        "proposal_id": "p-01",
+        "position": "Con",
+        "text": "Trees take years to grow.",
+        "parent_id": "arg-1",
+    },
+    {
+        "id": "arg-5",
+        "proposal_id": "p-01",
+        "position": "pro",
+        "text": "Trees cost little.",
+        "parent_id": "arg-4",
+    },
+    {
+        "id": "arg-6",
+        "proposal_id": "p-01",
+        "position": "neutral",
+        "text": "It depends on the species.",
+        "parent_id": "arg-4",
+    },
+    {
+        "id": "arg-3",
+        "proposal_id": "p-01",
+        "position": "pro",
+        "text": "Planting now helps later.",
+        "parent_id": "arg-2",
+    },
+)
 
 
 def minimal_rows() -> dict[str, Any]:
@@ -86,7 +166,7 @@ def minimal_rows() -> dict[str, Any]:
 
 
 def reference_rows() -> dict[str, Any]:
-    """Return fresh reference rows: two Groups, one Project and its five Proposals."""
+    """Return fresh reference rows: two Groups, one Project, its Proposals and Arguments."""
     rows = minimal_rows()
     rows["groups"].append(
         {
@@ -124,4 +204,6 @@ def reference_rows() -> dict[str, Any]:
         {"revision_id": revision_id, "counts": list(counts)}
         for revision_id, counts in VOTE_COUNTS.items()
     ]
+    rows["amendments"] = [dict(row) for row in AMENDMENTS]
+    rows["arguments"] = [dict(row) for row in ARGUMENTS]
     return rows

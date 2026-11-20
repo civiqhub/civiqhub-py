@@ -97,7 +97,7 @@ def test_a_project_holds_the_revisions_of_its_proposals_and_no_other() -> None:
         r.id for p in dataset.proposals if p.project_id == "budget-2027" for r in p.revisions
     }
     assert set(budget.revisions.ids) == expected
-    assert len(budget.revisions) == 7
+    assert len(budget.revisions) == 8
     assert parks.revisions.ids == ("q-01.r1",)
     assert parks.proposals.ids == ("q-01",)
     assert "q-01" not in budget.proposals.ids
@@ -136,7 +136,7 @@ def test_repr_of_a_proposal_and_a_revision() -> None:
 
 def test_the_fields_of_a_revision_are_read() -> None:
     revision = reference().revisions["p-01.r2"]
-    assert revision.amendment_id == "am-01"
+    assert revision.amendment_id == "am-04"
     assert revision.description == ""
     assert revision.content_hash is None
     assert revision.created_at == "2026-11-16T09:00:00Z"
@@ -217,7 +217,7 @@ def test_vote_counts_are_for_a_known_revision() -> None:
 def test_a_revision_has_one_row_of_vote_counts() -> None:
     rows = reference_rows()
     rows["vote_counts"].append({"revision_id": "p-01.r1", "counts": [0, 0, 0, 0, 1]})
-    with pytest.raises(ValidationError, match=r"vote_counts\[0\] and vote_counts\[6\].*'p-01.r1'"):
+    with pytest.raises(ValidationError, match=r"vote_counts\[0\] and vote_counts\[7\].*'p-01.r1'"):
         Dataset(rows)
 
 
