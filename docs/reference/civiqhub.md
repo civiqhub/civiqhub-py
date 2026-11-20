@@ -22,4 +22,5 @@ These names are imported from `civiqhub`. Each one links to the module that defi
 :maxdepth: 1
 
 civiqhub.errors
+civiqhub.values
 ```

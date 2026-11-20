@@ -4,8 +4,9 @@
 
 """Python package by CiviqHub: preview, not functional yet.
 
-The SDK is being written. It exposes ``__version__`` and the errors of the SDK, defined
-in :mod:`civiqhub.errors`.
+The SDK is being written. It exposes ``__version__``, the errors of the SDK, defined in
+:mod:`civiqhub.errors`, and the values that the objects of a Project carry, defined in
+:mod:`civiqhub.values`.
 """
 
 from .errors import (
@@ -18,16 +19,34 @@ from .errors import (
     UnavailableError,
     ValidationError,
 )
+from .values import (
+    ActantKind,
+    AmendmentStatus,
+    Exposure,
+    Participation,
+    Position,
+    Role,
+    VoteCounts,
+    VoteState,
+)
 
 __all__ = [
+    "ActantKind",
+    "AmendmentStatus",
     "AuthenticationError",
     "CiviqHubError",
+    "Exposure",
     "ExposureError",
     "MissingExtraError",
     "NotFoundError",
+    "Participation",
+    "Position",
     "RateLimitedError",
+    "Role",
     "UnavailableError",
     "ValidationError",
+    "VoteCounts",
+    "VoteState",
     "__version__",
 ]
 
