@@ -28,11 +28,18 @@ ticket of the model adds the sections it builds.
     At the pseudonymised level, four actants: the members m-001, m-002 and m-003, and
     the agent g-001. m-003 voted only on p-01.r1, the old revision of p-01; p-01.r2 was
     shown to m-003, who did not vote on it.
+
+FakeApi serves such rows as the public API would, for the tests of ApiSource; it opens
+no socket.
 """
 
+import json
+from collections.abc import Mapping
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from civiqhub.dataset import FORMAT
+from civiqhub.sources import DEFAULT_URL
 
 AS_OF = "2026-11-16T09:00:00Z"
 
@@ -283,3 +290,133 @@ def pseudonymised_rows(*, impressions: bool = True) -> dict[str, Any]:
             {"actant": actant, "revision_id": revision_id} for actant, revision_id in IMPRESSIONS
         ]
     return rows
+
+
+def api_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
+    """Return the reference rows as a token of the Group g-1 reads them from the API.
+
+    The API lists the Projects of a Group, not its sub-groups: here, the reference
+    Project sits right in g-1. The API records no impressions.
+
+    Args:
+        pseudonymised: Whether the rows are at the pseudonymised level.
+    """
+    rows = pseudonymised_rows(impressions=False) if pseudonymised else reference_rows()
+    rows["groups"] = [group for group in rows["groups"] if group["id"] == "g-1"]
+    rows["projects"][0]["group_id"] = "g-1"
+    return rows
+
+
+#: The fake token of the tests.
+TOKEN = "civ_pat_test1234"
+
+Answer = tuple[int, dict[str, str], bytes]
+
+
+class FakeApi:
+    """A fake of the public API: it serves rows, notes each request and opens no socket.
+
+    It answers the paths of ``ApiSource.PATHS`` under ``DEFAULT_URL``. A path set in
+    :attr:`answers` gets that answer instead; any other path gets a 404.
+
+    Args:
+        rows: The rows it serves, in the format of a dataset.
+        kind: What the token covers: ``"group"`` or ``"project"``.
+        container_id: The id of the Group or of the Project that the token covers.
+        page_size: How many rows a page holds.
+    """
+
+    def __init__(
+        self,
+        rows: dict[str, Any],
+        *,
+        kind: str = "group",
+        container_id: str = "g-1",
+        page_size: int = 2,
+    ) -> None:
+        self.rows = rows
+        self.kind = kind
+        self.container_id = container_id
+        self.page_size = page_size
+        #: Each request, as (address, headers), in order.
+        self.requests: list[tuple[str, dict[str, str]]] = []
+        #: Forced answers, by path.
+        self.answers: dict[str, Answer] = {}
+
+    @property
+    def paths(self) -> list[str]:
+        """The path of each request, in order, without the base address and the query."""
+        return [_split(url)[0] for url, _ in self.requests]
+
+    def __call__(self, url: str, headers: Mapping[str, str]) -> Answer:
+        self.requests.append((url, dict(headers)))
+        path, query = _split(url)
+        if path in self.answers:
+            return self.answers[path]
+        body = self._answer(path, query)
+        if body is None:
+            return 404, {}, b'{"error": "not_found"}'
+        return 200, {"Content-Type": "application/json"}, json.dumps(body).encode()
+
+    def _answer(self, path: str, query: dict[str, str]) -> Any:
+        rows = self.rows
+        if path == "/token":
+            return {"kind": self.kind, "id": self.container_id, "as_of": rows["as_of"]}
+        parts = path.strip("/").split("/")
+        if parts[0] == "groups" and len(parts) >= 2:
+            if len(parts) == 2:
+                return _first(rows.get("groups", []), "id", parts[1])
+            if parts[2:] == ["projects"]:
+                projects = [row for row in rows["projects"] if row.get("group_id") == parts[1]]
+                return self._page(projects, query)
+        if parts[0] == "projects" and len(parts) >= 2:
+            project_id, rest = parts[1], "/".join(parts[2:])
+            if not rest:
+                return _first(rows["projects"], "id", project_id)
+            if rest == "participation":
+                return _first(rows.get("participation", []), "project_id", project_id)
+            proposals = [
+                row for row in rows.get("proposals", []) if row["project_id"] == project_id
+            ]
+            ids = {row["id"] for row in proposals}
+            revisions = [row for row in rows.get("revisions", []) if row["proposal_id"] in ids]
+            revision_ids = {row["id"] for row in revisions}
+            sections = {
+                "proposals": proposals,
+                "revisions": revisions,
+                "amendments": [
+                    row for row in rows.get("amendments", []) if row["proposal_id"] in ids
+                ],
+                "arguments": [
+                    row for row in rows.get("arguments", []) if row["proposal_id"] in ids
+                ],
+                "votes/aggregates": [
+                    row for row in rows.get("vote_counts", []) if row["revision_id"] in revision_ids
+                ],
+                "votes": [
+                    row for row in rows.get("votes", []) if row["revision_id"] in revision_ids
+                ],
+                "actants": rows.get("actants", []),
+            }
+            if rest in sections:
+                return self._page(sections[rest], query)
+        return None
+
+    def _page(self, items: list[Any], query: dict[str, str]) -> dict[str, Any]:
+        start = int(query.get("cursor", "0"))
+        end = start + self.page_size
+        page: dict[str, Any] = {"data": items[start:end]}
+        if end < len(items):
+            page["next_cursor"] = str(end)
+        return page
+
+
+def _split(url: str) -> tuple[str, dict[str, str]]:
+    parts = urlsplit(url)
+    base = urlsplit(DEFAULT_URL).path
+    query = {key: values[0] for key, values in parse_qs(parts.query).items()}
+    return parts.path.removeprefix(base), query
+
+
+def _first(rows: list[dict[str, Any]], key: str, value: str) -> dict[str, Any] | None:
+    return next((row for row in rows if row.get(key) == value), None)
