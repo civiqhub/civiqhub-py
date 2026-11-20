@@ -5,20 +5,21 @@
 """The objects of the product.
 
 :class:`Entity` is what every object of the product shares: a frozen value, known by its
-id, tied to the :class:`~civiqhub.dataset.Dataset` it comes from. :class:`Group` and
-:class:`Project` are written; Proposal and the other objects are not written yet.
+id, tied to the :class:`~civiqhub.dataset.Dataset` it comes from. :class:`Group`,
+:class:`Project`, :class:`Proposal` and :class:`Revision` are written; Amendment, Argument,
+Actant and Vote are not written yet.
 """
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
 from .listing import Listing
-from .values import Exposure, Participation
+from .values import Exposure, Participation, VoteCounts
 
 if TYPE_CHECKING:
     from .dataset import Dataset
 
-__all__ = ["Entity", "Group", "Project"]
+__all__ = ["Entity", "Group", "Project", "Proposal", "Revision"]
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
@@ -115,8 +116,8 @@ class Group(Entity):
 class Project(Entity):
     """A Project of a Group: the set of its articles and of their versions.
 
-    Every proposal of a Project has a parent article. This version of the SDK reads
-    neither the articles nor the proposals yet.
+    Every proposal of a Project has a parent article. This version of the SDK does not
+    read the articles yet.
 
     ``repr`` shows its id and its name, such as
     ``Project('budget-2027', 'Budget participatif')``.
@@ -161,3 +162,131 @@ class Project(Entity):
     def participation(self) -> Participation:
         """The counts of what happened in the Project, as the source gave them."""
         return self.dataset._participation_of(self.id)
+
+    @property
+    def proposals(self) -> "Listing[Proposal]":
+        """The Proposals of the Project that are not Amendments, in the order of the rows."""
+        return self.dataset._proposals_in(self.id)
+
+    @property
+    def revisions(self) -> "Listing[Revision]":
+        """The Revisions of every Proposal of the Project, Amendments included.
+
+        They come by Proposal, in the order of the rows, then by number.
+        """
+        return self.dataset._revisions_in(self.id)
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Proposal(Entity):
+    """A statement put to the collective of a Project.
+
+    A Proposal changes through numbered Revisions, one of which is current. A vote is on
+    one Revision: the vote counts of a Proposal are those of its current Revision, not a
+    sum over its Revisions.
+
+    ``repr`` shows its id and the first 60 characters of its text, such as
+    ``Proposal('p-01', 'Plant 150 trees in the parks.')``.
+
+    Args:
+        id: The id of the Proposal.
+        dataset: The dataset that the Proposal comes from.
+        project_id: The id of the Project of the Proposal.
+        article_id: The id of the parent article of the Proposal, kept as the source gave
+            it, or ``None``.
+        author_id: The pseudonym of the author. It is ``None`` in an aggregated dataset.
+        created_at: When the Proposal was created, in ISO 8601, or ``None``.
+        current_revision_id: The id of the current Revision. Without it, the Revision
+            with the highest number is current.
+    """
+
+    project_id: str
+    article_id: str | None = None
+    author_id: str | None = None
+    created_at: str | None = None
+    current_revision_id: str | None = None
+
+    #: The name of a Proposal in messages.
+    noun: ClassVar[str] = "proposal"
+
+    def _label(self) -> str:
+        return self.text[:60]
+
+    @property
+    def project(self) -> Project:
+        """The Project of the Proposal."""
+        return self.dataset.projects[self.project_id]
+
+    @property
+    def revisions(self) -> "Listing[Revision]":
+        """The Revisions of the Proposal, by increasing number."""
+        return self.dataset._revisions_of(self.id)
+
+    @property
+    def current_revision(self) -> "Revision":
+        """The Revision in force."""
+        return self.dataset._current_revision_of(self.id)
+
+    @property
+    def text(self) -> str:
+        """The affirmation of the current Revision."""
+        return self.current_revision.affirmation
+
+    @property
+    def vote_counts(self) -> VoteCounts:
+        """The vote counts of the current Revision."""
+        return self.current_revision.vote_counts
+
+    @property
+    def is_amendment(self) -> bool:
+        """Whether the Proposal is an Amendment: never for a plain Proposal."""
+        return False
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Revision(Entity):
+    """One numbered version of a Proposal. Votes are cast on a Revision.
+
+    ``repr`` shows its id and its number, such as ``Revision('p-01.r2', 'r2')``.
+
+    Args:
+        id: The id of the Revision.
+        dataset: The dataset that the Revision comes from.
+        proposal_id: The id of the Proposal of the Revision.
+        number: The number of the Revision, from 1, unique within its Proposal.
+        affirmation: The text of the Proposal in this Revision.
+        description: The description of the Proposal in this Revision.
+        created_at: When the Revision was created, in ISO 8601, or ``None``.
+        content_hash: The digest of the content that the source gave, or ``None``.
+        amendment_id: The id of the amendment whose adoption produced this Revision, or
+            ``None``.
+    """
+
+    proposal_id: str
+    number: int = 1
+    affirmation: str = ""
+    description: str = ""
+    created_at: str | None = None
+    content_hash: str | None = None
+    amendment_id: str | None = None
+
+    #: The name of a Revision in messages.
+    noun: ClassVar[str] = "revision"
+
+    def _label(self) -> str:
+        return f"r{self.number}"
+
+    @property
+    def proposal(self) -> Proposal:
+        """The Proposal of the Revision."""
+        return self.dataset.proposals[self.proposal_id]
+
+    @property
+    def is_current(self) -> bool:
+        """Whether the Revision is the one in force for its Proposal."""
+        return self.dataset._current_revision_of(self.proposal_id) is self
+
+    @property
+    def vote_counts(self) -> VoteCounts:
+        """The five vote counts of the Revision, all zero when the source gave none."""
+        return self.dataset._vote_counts_of(self.id)

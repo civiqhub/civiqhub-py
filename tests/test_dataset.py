@@ -322,7 +322,7 @@ def test_exposure_is_aggregated_or_pseudonymised(value: object) -> None:
 def test_the_participation_of_a_project_is_read_from_its_row() -> None:
     participation = Dataset(minimal_rows()).project().participation
     assert participation == Participation(
-        n_proposals=3, n_amendments=2, n_arguments=4, n_votes=30, n_actants=8, n_voters=6
+        n_proposals=3, n_amendments=2, n_arguments=4, n_votes=15, n_actants=8, n_voters=6
     )
     assert participation.turnout == TURNOUT
 
@@ -374,10 +374,9 @@ def test_repr_counts_the_projects_and_the_proposals() -> None:
     assert repr(Dataset(rows)) == (
         f"Dataset(1 project, 0 proposals, aggregated, as of {AS_OF}, from memory)"
     )
-    rows["proposals"] = [{"id": f"p-{number}"} for number in range(14)]
-    with_second_project(rows)
+    rows = with_second_project(reference_rows())
     assert repr(Dataset(rows, source="file")) == (
-        f"Dataset(2 projects, 14 proposals, aggregated, as of {AS_OF}, from file)"
+        f"Dataset(2 projects, 5 proposals, aggregated, as of {AS_OF}, from file)"
     )
 
 
