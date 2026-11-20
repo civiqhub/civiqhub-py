@@ -9,9 +9,9 @@ can write, with an entry ``format``, an instant ``as_of``, a level of ``exposure
 list of rows per section. A missing section is an empty list, and a key that a row does
 not need is ignored.
 
-This version builds three sections: ``groups``, ``projects`` and ``participation``. The
-other sections of the format (``articles``, ``article_versions``, ``paragraphs``,
-``placements``, ``citations``, ``proposals``, ``revisions``, ``vote_counts``,
+This version builds six sections: ``groups``, ``projects``, ``participation``,
+``proposals``, ``revisions`` and ``vote_counts``. The other sections of the format
+(``articles``, ``article_versions``, ``paragraphs``, ``placements``, ``citations``,
 ``amendments``, ``arguments``, ``actants``, ``votes`` and ``impressions``) are kept as
 they are. They count in the fingerprint and come back from :meth:`Dataset.to_dict`, but no
 object is built from them yet.
@@ -19,15 +19,15 @@ object is built from them yet.
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import fields
 from datetime import datetime, timedelta
 from typing import Any, TypeVar
 
-from .entities import Group, Project
+from .entities import Entity, Group, Project, Proposal, Revision
 from .errors import ExposureError, NotFoundError, ValidationError
 from .listing import Listing
-from .values import Exposure, Participation
+from .values import Exposure, Participation, VoteCounts
 
 __all__ = ["FORMAT", "Dataset"]
 
@@ -63,6 +63,10 @@ _CITED = 8
 
 _Row = dict[str, Any]
 _SluggedT = TypeVar("_SluggedT", Group, Project)
+_EntityT = TypeVar("_EntityT", bound=Entity)
+
+# The vote counts of a revision without a row of vote counts.
+_NO_VOTE = VoteCounts()
 
 
 class Dataset:
@@ -87,24 +91,38 @@ class Dataset:
     __slots__ = (
         "_as_of",
         "_children",
+        "_current_revisions",
         "_exposure",
         "_groups",
         "_participation",
         "_projects",
         "_projects_by_group",
+        "_proposals",
+        "_proposals_by_project",
+        "_revisions",
+        "_revisions_by_project",
+        "_revisions_by_proposal",
         "_rows",
         "_source",
+        "_vote_counts",
     )
 
     _as_of: str
     _children: dict[str, Listing[Group]]
+    _current_revisions: dict[str, Revision]
     _exposure: Exposure
     _groups: Listing[Group]
     _participation: dict[str, Participation]
     _projects: Listing[Project]
     _projects_by_group: dict[str, Listing[Project]]
+    _proposals: Listing[Proposal]
+    _proposals_by_project: dict[str, Listing[Proposal]]
+    _revisions: Listing[Revision]
+    _revisions_by_project: dict[str, Listing[Revision]]
+    _revisions_by_proposal: dict[str, Listing[Revision]]
     _rows: _Row
     _source: str
+    _vote_counts: dict[str, VoteCounts]
 
     def __init__(self, rows: Mapping[str, Any], *, source: str = "memory") -> None:
         if not isinstance(source, str):
@@ -131,9 +149,10 @@ class Dataset:
         _set(self, "_source", source)
         _set(self, "_as_of", _read_as_of(data.get("as_of")))
         _set(self, "_exposure", exposure)
-        self._build(sections)
+        projects = self._build_groups(sections)
+        self._build_proposals(sections, projects)
 
-    def _build(self, sections: Mapping[str, list[_Row]]) -> None:
+    def _build_groups(self, sections: Mapping[str, list[_Row]]) -> list[Project]:
         groups = [
             self._group(row, f"groups[{index}]") for index, row in enumerate(sections["groups"])
         ]
@@ -173,6 +192,84 @@ class Dataset:
         _set(self, "_children", {key: Listing(items) for key, items in children.items()})
         _set(self, "_projects_by_group", {key: Listing(items) for key, items in by_group.items()})
         _set(self, "_participation", _read_participation(sections["participation"], projects))
+        return projects
+
+    def _build_proposals(self, sections: Mapping[str, list[_Row]], projects: list[Project]) -> None:
+        proposals = [
+            self._proposal(row, f"proposals[{index}]")
+            for index, row in enumerate(sections["proposals"])
+        ]
+        _check_unique(proposals, "proposals", ("id",))
+        known_projects = {project.id for project in projects}
+        for index, proposal in enumerate(proposals):
+            if proposal.project_id not in known_projects:
+                raise ValidationError(
+                    f"The row proposals[{index}] (id {proposal.id!r}) has the project_id "
+                    f"{proposal.project_id!r}, and no project has this id: project_id names a "
+                    f"project of the dataset."
+                )
+        revisions = [
+            self._revision(row, f"revisions[{index}]")
+            for index, row in enumerate(sections["revisions"])
+        ]
+        _check_unique(revisions, "revisions", ("id",))
+        rank = {proposal.id: index for index, proposal in enumerate(proposals)}
+        numbers: dict[tuple[str, int], int] = {}
+        for index, revision in enumerate(revisions):
+            if revision.proposal_id not in rank:
+                raise ValidationError(
+                    f"The row revisions[{index}] (id {revision.id!r}) has the proposal_id "
+                    f"{revision.proposal_id!r}, and no proposal has this id: proposal_id names "
+                    f"a proposal of the dataset."
+                )
+            key = (revision.proposal_id, revision.number)
+            if key in numbers:
+                raise ValidationError(
+                    f"The rows revisions[{numbers[key]}] and revisions[{index}] are both the "
+                    f"revision number {revision.number} of the proposal "
+                    f"{revision.proposal_id!r}: the numbers of the revisions of a proposal "
+                    f"differ."
+                )
+            numbers[key] = index
+        revisions.sort(key=lambda revision: (rank[revision.proposal_id], revision.number))
+        by_proposal: dict[str, list[Revision]] = {}
+        for revision in revisions:
+            by_proposal.setdefault(revision.proposal_id, []).append(revision)
+        current: dict[str, Revision] = {}
+        for index, proposal in enumerate(proposals):
+            own = by_proposal.get(proposal.id)
+            if not own:
+                raise ValidationError(
+                    f"The proposal {proposal.id!r} (proposals[{index}]) has no revision: a "
+                    f"proposal has at least one, in the section 'revisions'."
+                )
+            if proposal.current_revision_id is None:
+                current[proposal.id] = own[-1]
+                continue
+            found = next((r for r in own if r.id == proposal.current_revision_id), None)
+            if found is None:
+                raise ValidationError(
+                    f"The row proposals[{index}] (id {proposal.id!r}) has the "
+                    f"current_revision_id {proposal.current_revision_id!r}, which is not a "
+                    f"revision of this proposal."
+                )
+            current[proposal.id] = found
+        by_project: dict[str, list[Proposal]] = {}
+        revisions_by_project: dict[str, list[Revision]] = {}
+        for proposal in proposals:
+            if not proposal.is_amendment:
+                by_project.setdefault(proposal.project_id, []).append(proposal)
+            revisions_by_project.setdefault(proposal.project_id, []).extend(
+                by_proposal[proposal.id]
+            )
+        _set = object.__setattr__
+        _set(self, "_proposals", Listing(proposals))
+        _set(self, "_revisions", Listing(revisions))
+        _set(self, "_current_revisions", current)
+        _set(self, "_revisions_by_proposal", _freeze(by_proposal))
+        _set(self, "_proposals_by_project", _freeze(by_project))
+        _set(self, "_revisions_by_project", _freeze(revisions_by_project))
+        _set(self, "_vote_counts", _read_vote_counts(sections["vote_counts"], revisions))
 
     def _group(self, row: _Row, where: str) -> Group:
         id = _identifier(row, "id", where)
@@ -196,6 +293,40 @@ class Dataset:
             name=_text(row, "name", where),
             description=_text(row, "description", where),
             group_id=_optional_identifier(row, "group_id", where),
+        )
+
+    def _proposal(self, row: _Row, where: str) -> Proposal:
+        id = _identifier(row, "id", where)
+        where = f"{where} (id {id!r})"
+        author_id = _optional_identifier(row, "author_id", where)
+        if author_id is not None and self._exposure is Exposure.AGGREGATED:
+            raise ValidationError(
+                f"The row {where} has an author_id, and an aggregated dataset holds no "
+                f"pseudonym. Set exposure to 'pseudonymised', or leave author_id out."
+            )
+        return Proposal(
+            id=id,
+            dataset=self,
+            project_id=_identifier(row, "project_id", where),
+            article_id=_optional_identifier(row, "article_id", where),
+            author_id=author_id,
+            created_at=_optional_text(row, "created_at", where),
+            current_revision_id=_optional_identifier(row, "current_revision_id", where),
+        )
+
+    def _revision(self, row: _Row, where: str) -> Revision:
+        id = _identifier(row, "id", where)
+        where = f"{where} (id {id!r})"
+        return Revision(
+            id=id,
+            dataset=self,
+            proposal_id=_identifier(row, "proposal_id", where),
+            number=_number(row, where),
+            affirmation=_text(row, "affirmation", where),
+            description=_text(row, "description", where),
+            created_at=_optional_text(row, "created_at", where),
+            content_hash=_optional_text(row, "content_hash", where),
+            amendment_id=_optional_identifier(row, "amendment_id", where),
         )
 
     @classmethod
@@ -237,6 +368,19 @@ class Dataset:
     def projects(self) -> Listing[Project]:
         """Every Project of the dataset, in the order of the rows."""
         return self._projects
+
+    @property
+    def proposals(self) -> Listing[Proposal]:
+        """Every Proposal of the dataset, in the order of the rows."""
+        return self._proposals
+
+    @property
+    def revisions(self) -> Listing[Revision]:
+        """Every Revision of the dataset, by Proposal, then by number.
+
+        The Proposals come in the order of their rows.
+        """
+        return self._revisions
 
     def project(self, ref: str | None = None) -> Project:
         """Return the Project with this id or slug, or the only Project.
@@ -301,11 +445,10 @@ class Dataset:
         return hashlib.sha256(text.encode()).hexdigest()[:16]
 
     def __repr__(self) -> str:
-        proposals = len(self._rows.get("proposals", []))
         return (
             f"Dataset({_count(len(self.projects), 'project')}, "
-            f"{_count(proposals, 'proposal')}, {self.exposure.value}, as of {self.as_of}, "
-            f"from {self.source})"
+            f"{_count(len(self.proposals), 'proposal')}, {self.exposure.value}, "
+            f"as of {self.as_of}, from {self.source})"
         )
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -330,6 +473,21 @@ class Dataset:
 
     def _participation_of(self, project_id: str) -> Participation:
         return self._participation[project_id]
+
+    def _proposals_in(self, project_id: str) -> Listing[Proposal]:
+        return self._proposals_by_project.get(project_id, Listing())
+
+    def _revisions_in(self, project_id: str) -> Listing[Revision]:
+        return self._revisions_by_project.get(project_id, Listing())
+
+    def _revisions_of(self, proposal_id: str) -> Listing[Revision]:
+        return self._revisions_by_proposal[proposal_id]
+
+    def _current_revision_of(self, proposal_id: str) -> Revision:
+        return self._current_revisions[proposal_id]
+
+    def _vote_counts_of(self, revision_id: str) -> VoteCounts:
+        return self._vote_counts.get(revision_id, _NO_VOTE)
 
 
 def _copy(rows: object) -> _Row:
@@ -405,8 +563,62 @@ def _text(row: _Row, key: str, where: str) -> str:
     return value
 
 
-def _check_unique(items: list[_SluggedT], section: str) -> None:
-    for key in ("id", "slug"):
+def _optional_text(row: _Row, key: str, where: str) -> str | None:
+    value = row.get(key)
+    if value is not None and not isinstance(value, str):
+        raise ValidationError(f"The row {where} has a {key!r} that is not a string: {value!r}.")
+    return value
+
+
+def _number(row: _Row, where: str) -> int:
+    value = row.get("number")
+    if value is None:
+        return 1
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise ValidationError(
+            f"The row {where} has the number {value!r}: the number of a revision is a "
+            f"positive integer."
+        )
+    return value
+
+
+def _freeze(groups: Mapping[str, list[_EntityT]]) -> dict[str, Listing[_EntityT]]:
+    return {key: Listing(items) for key, items in groups.items()}
+
+
+def _read_vote_counts(rows: list[_Row], revisions: list[Revision]) -> dict[str, VoteCounts]:
+    known = {revision.id for revision in revisions}
+    seen: dict[str, int] = {}
+    vote_counts: dict[str, VoteCounts] = {}
+    for index, row in enumerate(rows):
+        revision_id = _identifier(row, "revision_id", f"vote_counts[{index}]")
+        if revision_id not in known:
+            raise ValidationError(
+                f"The row vote_counts[{index}] has the revision_id {revision_id!r}, and no "
+                f"revision has this id: revision_id names a revision of the dataset."
+            )
+        if revision_id in seen:
+            raise ValidationError(
+                f"The rows vote_counts[{seen[revision_id]}] and vote_counts[{index}] are both "
+                f"for the revision {revision_id!r}: a revision has one row of vote counts."
+            )
+        seen[revision_id] = index
+        counts = row.get("counts")
+        # VoteCounts checks the five counts and says what it received.
+        received: Any = tuple(counts) if isinstance(counts, list) else counts
+        try:
+            vote_counts[revision_id] = VoteCounts(received)
+        except ValidationError as error:
+            raise ValidationError(
+                f"The row vote_counts[{index}] (revision {revision_id!r}) breaks a rule. {error}"
+            ) from None
+    return vote_counts
+
+
+def _check_unique(
+    items: Sequence[Entity], section: str, keys: tuple[str, ...] = ("id", "slug")
+) -> None:
+    for key in keys:
         seen: dict[str, int] = {}
         for index, item in enumerate(items):
             value: str = getattr(item, key)
