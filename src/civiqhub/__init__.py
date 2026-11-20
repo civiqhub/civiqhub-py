@@ -4,10 +4,32 @@
 
 """Python package by CiviqHub: preview, not functional yet.
 
-This release reserves the package name and only exposes ``__version__``.
+The SDK is being written. It exposes ``__version__`` and the errors of the SDK, defined
+in :mod:`civiqhub.errors`.
 """
 
-__all__ = ["__version__"]
+from .errors import (
+    AuthenticationError,
+    CiviqHubError,
+    ExposureError,
+    MissingExtraError,
+    NotFoundError,
+    RateLimitedError,
+    UnavailableError,
+    ValidationError,
+)
+
+__all__ = [
+    "AuthenticationError",
+    "CiviqHubError",
+    "ExposureError",
+    "MissingExtraError",
+    "NotFoundError",
+    "RateLimitedError",
+    "UnavailableError",
+    "ValidationError",
+    "__version__",
+]
 
 #: Version of the package, in PEP 440 notation.
 __version__ = "0.0.1"
