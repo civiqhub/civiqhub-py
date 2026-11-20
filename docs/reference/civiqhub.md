@@ -27,4 +27,5 @@ civiqhub.listing
 civiqhub.entities
 civiqhub.dataset
 civiqhub.sources
+civiqhub.client
 ```
