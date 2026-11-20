@@ -6,8 +6,12 @@
 
 :class:`Entity` is what every object of the product shares: a frozen value, known by its
 id, tied to the :class:`~civiqhub.dataset.Dataset` it comes from. :class:`Group`,
-:class:`Project`, :class:`Proposal`, :class:`Amendment`, :class:`Revision` and
-:class:`Argument` are written; Actant and Vote are not written yet.
+:class:`Project`, :class:`Proposal`, :class:`Amendment`, :class:`Revision`,
+:class:`Argument`, :class:`Actant` (with :class:`Member` and :class:`Agent`) and
+:class:`Vote` are the objects of the product.
+
+Actants and votes exist only in a pseudonymised dataset. In an aggregated one, reading
+them raises :class:`~civiqhub.errors.ExposureError`.
 """
 
 from collections.abc import Iterator
@@ -15,12 +19,33 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
 from .listing import Listing
-from .values import AmendmentStatus, Exposure, Participation, Position, VoteCounts
+from .values import (
+    ActantKind,
+    AmendmentStatus,
+    Exposure,
+    Participation,
+    Position,
+    Role,
+    VoteCounts,
+    VoteState,
+)
 
 if TYPE_CHECKING:
     from .dataset import Dataset
 
-__all__ = ["Amendment", "Argument", "Entity", "Group", "Project", "Proposal", "Revision"]
+__all__ = [
+    "Actant",
+    "Agent",
+    "Amendment",
+    "Argument",
+    "Entity",
+    "Group",
+    "Member",
+    "Project",
+    "Proposal",
+    "Revision",
+    "Vote",
+]
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
@@ -191,6 +216,28 @@ class Project(Entity):
         """
         return self.dataset._arguments_in(self.id)
 
+    @property
+    def actants(self) -> "Listing[Actant]":
+        """The Actants of the dataset, in the order of the rows.
+
+        A row of actants names no Project: these are all the Actants that the source gave.
+
+        Raises:
+            ExposureError: The dataset is aggregated.
+        """
+        self.dataset.require_individual_votes("project.actants")
+        return self.dataset.actants
+
+    @property
+    def votes(self) -> "Listing[Vote]":
+        """The votes on the Revisions of the Project, Amendments included.
+
+        Raises:
+            ExposureError: The dataset is aggregated.
+        """
+        self.dataset.require_individual_votes("project.votes")
+        return self.dataset._votes_in(self.id)
+
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
 class Proposal(Entity):
@@ -280,6 +327,26 @@ class Proposal(Entity):
         """The Arguments on this Proposal, depth first: each one, then its replies."""
         return self.dataset._arguments_of(self.id)
 
+    @property
+    def votes(self) -> "Listing[Vote]":
+        """The votes on the current Revision.
+
+        Raises:
+            ExposureError: The dataset is aggregated.
+        """
+        self.dataset.require_individual_votes("proposal.votes")
+        return self.dataset._votes_on(self.current_revision.id)
+
+    @property
+    def author(self) -> "Actant | None":
+        """The Actant who wrote the Proposal, or ``None`` when the source does not say.
+
+        Raises:
+            ExposureError: The dataset is aggregated.
+        """
+        self.dataset.require_individual_votes("proposal.author")
+        return None if self.author_id is None else self.dataset.actants[self.author_id]
+
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
 class Revision(Entity):
@@ -335,6 +402,16 @@ class Revision(Entity):
         if self.amendment_id is None:
             return None
         return self.dataset._amendment_by_row(self.amendment_id)
+
+    @property
+    def votes(self) -> "Listing[Vote]":
+        """The votes on the Revision, in the order of the rows.
+
+        Raises:
+            ExposureError: The dataset is aggregated. ``vote_counts`` stays readable.
+        """
+        self.dataset.require_individual_votes("revision.votes")
+        return self.dataset._votes_on(self.id)
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
@@ -471,3 +548,142 @@ class Argument(Entity):
     def depth(self) -> int:
         """How deep the Argument is in its thread: 0 at the top."""
         return self.dataset._depth_of(self.id)
+
+    @property
+    def author(self) -> "Actant | None":
+        """The Actant who wrote the Argument, or ``None`` when the source does not say.
+
+        Raises:
+            ExposureError: The dataset is aggregated.
+        """
+        self.dataset.require_individual_votes("argument.author")
+        return None if self.author_id is None else self.dataset.actants[self.author_id]
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Actant(Entity):
+    """Anyone who acts in a Project: a human member or an agent.
+
+    The SDK knows an Actant by its pseudonym only, which is its id: never by a name, a
+    display name, an e-mail address or an internal id. A pseudonym is valid in its
+    dataset only. Two Actants from two datasets are never equal, even with the same
+    pseudonym: an Actant cannot be followed from one load to the next.
+
+    The dataset builds a :class:`Member` for a human, an :class:`Agent` for an agent, and
+    an Actant of kind ``other`` otherwise.
+
+    Args:
+        id: The pseudonym of the Actant.
+        dataset: The dataset that the Actant comes from.
+        kind: Human, agent or other.
+        role: The role of the Actant in the Project, or ``None`` when the source does not
+            say.
+    """
+
+    kind: ActantKind = ActantKind.HUMAN
+    role: Role | None = None
+
+    #: The name of an Actant in messages.
+    noun: ClassVar[str] = "actant"
+
+    @property
+    def pseudonym(self) -> str:
+        """The pseudonym of the Actant: its id."""
+        return self.id
+
+    @property
+    def votes(self) -> "Listing[Vote]":
+        """The votes of the Actant, in the order of the rows."""
+        return self.dataset._votes_of(self.id)
+
+    @property
+    def arguments(self) -> "Listing[Argument]":
+        """The Arguments that the Actant wrote, in the order of the rows."""
+        return self.dataset._arguments_by(self.id)
+
+    def vote_on(self, target: Proposal | Revision) -> "Vote | None":
+        """Return the vote of the Actant on a Revision, or ``None``.
+
+        Args:
+            target: A Revision, or a Proposal, for its current Revision. A vote on an
+                older Revision of the Proposal is not returned.
+        """
+        revision = target.current_revision if isinstance(target, Proposal) else target
+        return self.dataset._vote_of(self.id, revision.id)
+
+    def vote_state_on(self, target: Proposal | Revision) -> VoteState:
+        """Say whether the Actant voted on a Revision, abstained, or did not see it.
+
+        The rule has three steps. A vote exists: ``VOTED``. Otherwise, when the dataset
+        records impressions: ``ABSTAINED`` if the Revision was shown to the Actant,
+        ``NOT_SHOWN`` if not. Otherwise: ``UNKNOWN``. A missing vote is never read as a
+        neutral vote, nor as an abstention when the impressions are not recorded.
+
+        Args:
+            target: A Revision, or a Proposal, for its current Revision.
+        """
+        revision = target.current_revision if isinstance(target, Proposal) else target
+        if self.dataset._vote_of(self.id, revision.id) is not None:
+            return VoteState.VOTED
+        if not self.dataset.has_impressions:
+            return VoteState.UNKNOWN
+        if self.dataset._was_shown(self.id, revision.id):
+            return VoteState.ABSTAINED
+        return VoteState.NOT_SHOWN
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Member(Actant):
+    """A human member of a Project, known by a pseudonym."""
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Agent(Actant):
+    """A software agent that takes part with the same grammar as a member."""
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Vote(Entity):
+    """The vote of one Actant on one Revision, from -2 to +2.
+
+    0 is a deliberate choice, not an abstention: an abstention is the absence of a vote.
+    ``repr`` shows its id and its signed score, such as ``Vote('m-001@p-01.r2', '+2')``.
+
+    Args:
+        id: ``"{actant_id}@{revision_id}"``.
+        dataset: The dataset that the vote comes from.
+        actant_id: The pseudonym of the Actant who voted.
+        revision_id: The id of the Revision voted on.
+        score: The score, from -2 to +2.
+        cast_at: When the vote was cast, in ISO 8601, or ``None``.
+    """
+
+    actant_id: str
+    revision_id: str
+    score: int
+    cast_at: str | None = None
+
+    #: The name of a vote in messages.
+    noun: ClassVar[str] = "vote"
+
+    def _label(self) -> str:
+        return f"{self.score:+d}" if self.score else "0"
+
+    @property
+    def actant(self) -> Actant:
+        """The Actant who voted."""
+        return self.dataset.actants[self.actant_id]
+
+    @property
+    def revision(self) -> Revision:
+        """The Revision voted on."""
+        return self.dataset.revisions[self.revision_id]
+
+    @property
+    def proposal(self) -> Proposal:
+        """The Proposal of the Revision voted on."""
+        return self.revision.proposal
+
+    def to_record(self) -> tuple[str, str, int]:
+        """Return ``(actant_id, revision_id, score)``."""
+        return (self.actant_id, self.revision_id, self.score)
