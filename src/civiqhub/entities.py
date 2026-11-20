@@ -6,20 +6,21 @@
 
 :class:`Entity` is what every object of the product shares: a frozen value, known by its
 id, tied to the :class:`~civiqhub.dataset.Dataset` it comes from. :class:`Group`,
-:class:`Project`, :class:`Proposal` and :class:`Revision` are written; Amendment, Argument,
-Actant and Vote are not written yet.
+:class:`Project`, :class:`Proposal`, :class:`Amendment`, :class:`Revision` and
+:class:`Argument` are written; Actant and Vote are not written yet.
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
 from .listing import Listing
-from .values import Exposure, Participation, VoteCounts
+from .values import AmendmentStatus, Exposure, Participation, Position, VoteCounts
 
 if TYPE_CHECKING:
     from .dataset import Dataset
 
-__all__ = ["Entity", "Group", "Project", "Proposal", "Revision"]
+__all__ = ["Amendment", "Argument", "Entity", "Group", "Project", "Proposal", "Revision"]
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
@@ -176,6 +177,20 @@ class Project(Entity):
         """
         return self.dataset._revisions_in(self.id)
 
+    @property
+    def amendments(self) -> "Listing[Amendment]":
+        """The Amendments of the Project, in the order of the rows."""
+        return self.dataset._amendments_in(self.id)
+
+    @property
+    def arguments(self) -> "Listing[Argument]":
+        """The Arguments on the Proposals of the Project, Amendments included.
+
+        They come by Proposal, in the order of the rows, each Proposal with its Arguments
+        in depth-first order.
+        """
+        return self.dataset._arguments_in(self.id)
+
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
 class Proposal(Entity):
@@ -239,8 +254,31 @@ class Proposal(Entity):
 
     @property
     def is_amendment(self) -> bool:
-        """Whether the Proposal is an Amendment: never for a plain Proposal."""
+        """Whether the Proposal is an Amendment."""
         return False
+
+    @property
+    def amendments(self) -> "Listing[Amendment]":
+        """The Amendments that target this Proposal directly, in the order of the rows."""
+        return self.dataset._amendments_of(self.id)
+
+    def walk_amendments(self) -> Iterator[tuple[int, "Proposal"]]:
+        """Walk the tree of the Amendments of this Proposal, depth first.
+
+        Yields:
+            ``(0, self)`` first, then each Amendment with its depth: 1 for an Amendment
+            to this Proposal, 2 for an Amendment to such an Amendment, and so on.
+        """
+        stack: list[tuple[int, Proposal]] = [(0, self)]
+        while stack:
+            depth, proposal = stack.pop()
+            yield depth, proposal
+            stack.extend((depth + 1, child) for child in reversed(proposal.amendments))
+
+    @property
+    def arguments(self) -> "Listing[Argument]":
+        """The Arguments on this Proposal, depth first: each one, then its replies."""
+        return self.dataset._arguments_of(self.id)
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
@@ -290,3 +328,146 @@ class Revision(Entity):
     def vote_counts(self) -> VoteCounts:
         """The five vote counts of the Revision, all zero when the source gave none."""
         return self.dataset._vote_counts_of(self.id)
+
+    @property
+    def amendment(self) -> "Amendment | None":
+        """The Amendment whose adoption produced this Revision, or ``None``."""
+        if self.amendment_id is None:
+            return None
+        return self.dataset._amendment_by_row(self.amendment_id)
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Amendment(Proposal):
+    """A Proposal that amends another Proposal, on one Revision of it.
+
+    An Amendment has its own Revisions, votes and vote counts, as every Proposal. Once
+    adopted, it produces a new Revision of the Proposal it targets. Only the local change
+    of a Proposal exists: an Amendment has no type.
+
+    Args:
+        id: The id of the Proposal that is an Amendment.
+        dataset: The dataset that the Amendment comes from.
+        project_id: The id of the Project of the Amendment.
+        article_id: The id of the parent article, or ``None``.
+        author_id: The pseudonym of the author. It is ``None`` in an aggregated dataset.
+        created_at: When the Amendment was created, in ISO 8601, or ``None``.
+        current_revision_id: The id of the current Revision of the Amendment.
+        amendment_id: The id of the row of the section ``amendments``.
+        target_id: The id of the Proposal that the Amendment targets.
+        target_revision_id: The id of the Revision of the target that it amends.
+        status: Whether the Amendment is open, adopted or rejected.
+        adopted_revision_id: The id of the Revision of the target that its adoption
+            produced, or ``None``.
+        is_stale: Whether the target changed since the Amendment was written.
+    """
+
+    amendment_id: str
+    target_id: str
+    target_revision_id: str
+    status: AmendmentStatus = AmendmentStatus.OPEN
+    adopted_revision_id: str | None = None
+    is_stale: bool = False
+
+    #: The name of an Amendment in messages.
+    noun: ClassVar[str] = "amendment"
+
+    @property
+    def is_amendment(self) -> bool:
+        """Whether the Proposal is an Amendment: always for an Amendment."""
+        return True
+
+    @property
+    def target(self) -> Proposal:
+        """The Proposal that the Amendment targets."""
+        return self.dataset.proposals[self.target_id]
+
+    @property
+    def target_revision(self) -> Revision:
+        """The Revision of the target that the Amendment amends."""
+        return self.dataset.revisions[self.target_revision_id]
+
+    @property
+    def is_adopted(self) -> bool:
+        """Whether the Amendment was adopted."""
+        return self.status is AmendmentStatus.ADOPTED
+
+    @property
+    def adopted_revision(self) -> Revision | None:
+        """The Revision of the target that the adoption produced, or ``None``."""
+        if self.adopted_revision_id is None:
+            return None
+        return self.dataset.revisions[self.adopted_revision_id]
+
+    @property
+    def root(self) -> Proposal:
+        """The first Proposal that is not an Amendment, following the targets."""
+        proposal: Proposal = self
+        while isinstance(proposal, Amendment):
+            proposal = proposal.target
+        return proposal
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Argument(Entity):
+    """A reasoned stance on a Proposal. Arguments reply to each other as a tree.
+
+    ``repr`` shows its id and the first 60 characters of its text.
+
+    Args:
+        id: The id of the Argument.
+        dataset: The dataset that the Argument comes from.
+        proposal_id: The id of the Proposal that the Argument is about.
+        revision_id: The id of the Revision of that Proposal it was written on, or
+            ``None``.
+        author_id: The pseudonym of the author. It is ``None`` in an aggregated dataset.
+        position: For, against or neither, or ``None`` when the source does not say.
+        text: The text of the Argument.
+        score: The score, from -2 to +2, when the source gives one, or ``None``.
+        parent_id: The id of the Argument that this one replies to, or ``None``.
+        n_supports: How many times the Argument was supported.
+    """
+
+    proposal_id: str
+    revision_id: str | None = None
+    author_id: str | None = None
+    position: Position | None = None
+    text: str = ""
+    score: int | None = None
+    parent_id: str | None = None
+    n_supports: int = 0
+
+    #: The name of an Argument in messages.
+    noun: ClassVar[str] = "argument"
+
+    def _label(self) -> str:
+        return self.text[:60]
+
+    @property
+    def proposal(self) -> Proposal:
+        """The Proposal that the Argument is about."""
+        return self.dataset.proposals[self.proposal_id]
+
+    @property
+    def revision(self) -> Revision | None:
+        """The Revision that the Argument was written on, or ``None``."""
+        if self.revision_id is None:
+            return None
+        return self.dataset.revisions[self.revision_id]
+
+    @property
+    def parent(self) -> "Argument | None":
+        """The Argument that this one replies to, or ``None`` at the top of a thread."""
+        if self.parent_id is None:
+            return None
+        return self.dataset.arguments[self.parent_id]
+
+    @property
+    def replies(self) -> "Listing[Argument]":
+        """The Arguments that reply to this one directly, in the order of the rows."""
+        return self.dataset._replies_to(self.id)
+
+    @property
+    def depth(self) -> int:
+        """How deep the Argument is in its thread: 0 at the top."""
+        return self.dataset._depth_of(self.id)

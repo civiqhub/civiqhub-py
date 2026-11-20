@@ -191,10 +191,10 @@ def test_a_field_of_the_wrong_kind_is_refused(change: dict[str, Any], expected: 
 
 
 def test_an_unknown_key_is_ignored() -> None:
-    rows = minimal_rows()
+    rows = reference_rows()
     rows["projects"][0]["colour"] = "green"
     rows["groups"][0]["kind"] = "collective"
-    rows["amendments"] = [{"id": "am-1", "type": "UPDATE", "itemType": "x", "kind": "y"}]
+    rows["amendments"][0].update({"type": "UPDATE", "itemType": "x", "kind": "y"})
     rows["unknown_section"] = {"anything": True}
     project = Dataset(rows).project()
     assert not hasattr(project, "colour")
@@ -322,7 +322,7 @@ def test_exposure_is_aggregated_or_pseudonymised(value: object) -> None:
 def test_the_participation_of_a_project_is_read_from_its_row() -> None:
     participation = Dataset(minimal_rows()).project().participation
     assert participation == Participation(
-        n_proposals=3, n_amendments=2, n_arguments=4, n_votes=15, n_actants=8, n_voters=6
+        n_proposals=3, n_amendments=3, n_arguments=6, n_votes=16, n_actants=8, n_voters=6
     )
     assert participation.turnout == TURNOUT
 
@@ -376,7 +376,7 @@ def test_repr_counts_the_projects_and_the_proposals() -> None:
     )
     rows = with_second_project(reference_rows())
     assert repr(Dataset(rows, source="file")) == (
-        f"Dataset(2 projects, 5 proposals, aggregated, as of {AS_OF}, from file)"
+        f"Dataset(2 projects, 6 proposals, aggregated, as of {AS_OF}, from file)"
     )
 
 

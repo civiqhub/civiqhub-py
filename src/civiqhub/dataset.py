@@ -9,12 +9,12 @@ can write, with an entry ``format``, an instant ``as_of``, a level of ``exposure
 list of rows per section. A missing section is an empty list, and a key that a row does
 not need is ignored.
 
-This version builds six sections: ``groups``, ``projects``, ``participation``,
-``proposals``, ``revisions`` and ``vote_counts``. The other sections of the format
-(``articles``, ``article_versions``, ``paragraphs``, ``placements``, ``citations``,
-``amendments``, ``arguments``, ``actants``, ``votes`` and ``impressions``) are kept as
-they are. They count in the fingerprint and come back from :meth:`Dataset.to_dict`, but no
-object is built from them yet.
+This version builds eight sections: ``groups``, ``projects``, ``participation``,
+``proposals``, ``revisions``, ``vote_counts``, ``amendments`` and ``arguments``. The other
+sections of the format (``articles``, ``article_versions``, ``paragraphs``, ``placements``,
+``citations``, ``actants``, ``votes`` and ``impressions``) are kept as they are. They count
+in the fingerprint and come back from :meth:`Dataset.to_dict`, but no object is built from
+them yet.
 """
 
 import hashlib
@@ -24,10 +24,10 @@ from dataclasses import fields
 from datetime import datetime, timedelta
 from typing import Any, TypeVar
 
-from .entities import Entity, Group, Project, Proposal, Revision
+from .entities import Amendment, Argument, Entity, Group, Project, Proposal, Revision
 from .errors import ExposureError, NotFoundError, ValidationError
 from .listing import Listing
-from .values import Exposure, Participation, VoteCounts
+from .values import SCORES, AmendmentStatus, Exposure, Participation, Position, VoteCounts
 
 __all__ = ["FORMAT", "Dataset"]
 
@@ -89,9 +89,16 @@ class Dataset:
     """
 
     __slots__ = (
+        "_amendments_by_project",
+        "_amendments_by_row",
+        "_amendments_by_target",
+        "_arguments",
+        "_arguments_by_project",
+        "_arguments_by_proposal",
         "_as_of",
         "_children",
         "_current_revisions",
+        "_depths",
         "_exposure",
         "_groups",
         "_participation",
@@ -99,6 +106,7 @@ class Dataset:
         "_projects_by_group",
         "_proposals",
         "_proposals_by_project",
+        "_replies",
         "_revisions",
         "_revisions_by_project",
         "_revisions_by_proposal",
@@ -107,9 +115,16 @@ class Dataset:
         "_vote_counts",
     )
 
+    _amendments_by_project: dict[str, Listing[Amendment]]
+    _amendments_by_row: dict[str, Amendment]
+    _amendments_by_target: dict[str, Listing[Amendment]]
+    _arguments: Listing[Argument]
+    _arguments_by_project: dict[str, Listing[Argument]]
+    _arguments_by_proposal: dict[str, Listing[Argument]]
     _as_of: str
     _children: dict[str, Listing[Group]]
     _current_revisions: dict[str, Revision]
+    _depths: dict[str, int]
     _exposure: Exposure
     _groups: Listing[Group]
     _participation: dict[str, Participation]
@@ -117,6 +132,7 @@ class Dataset:
     _projects_by_group: dict[str, Listing[Project]]
     _proposals: Listing[Proposal]
     _proposals_by_project: dict[str, Listing[Proposal]]
+    _replies: dict[str, Listing[Argument]]
     _revisions: Listing[Revision]
     _revisions_by_project: dict[str, Listing[Revision]]
     _revisions_by_proposal: dict[str, Listing[Revision]]
@@ -150,7 +166,8 @@ class Dataset:
         _set(self, "_as_of", _read_as_of(data.get("as_of")))
         _set(self, "_exposure", exposure)
         projects = self._build_groups(sections)
-        self._build_proposals(sections, projects)
+        proposals = self._build_proposals(sections, projects)
+        self._build_arguments(sections["arguments"], proposals)
 
     def _build_groups(self, sections: Mapping[str, list[_Row]]) -> list[Project]:
         groups = [
@@ -170,7 +187,7 @@ class Dataset:
                     f"{group.parent_id!r}, and no group has this id: parent_id names a group "
                     f"of the dataset."
                 )
-        _check_tree(groups)
+        _check_tree(groups, "groups")
         for index, project in enumerate(projects):
             if project.group_id is not None and project.group_id not in known_groups:
                 raise ValidationError(
@@ -194,9 +211,12 @@ class Dataset:
         _set(self, "_participation", _read_participation(sections["participation"], projects))
         return projects
 
-    def _build_proposals(self, sections: Mapping[str, list[_Row]], projects: list[Project]) -> None:
+    def _build_proposals(
+        self, sections: Mapping[str, list[_Row]], projects: list[Project]
+    ) -> list[Proposal]:
+        links = _read_amendment_links(sections["amendments"])
         proposals = [
-            self._proposal(row, f"proposals[{index}]")
+            self._proposal(row, f"proposals[{index}]", links)
             for index, row in enumerate(sections["proposals"])
         ]
         _check_unique(proposals, "proposals", ("id",))
@@ -207,6 +227,14 @@ class Dataset:
                     f"The row proposals[{index}] (id {proposal.id!r}) has the project_id "
                     f"{proposal.project_id!r}, and no project has this id: project_id names a "
                     f"project of the dataset."
+                )
+        known_proposals = {proposal.id for proposal in proposals}
+        for proposal_id, (index, _row) in links.items():
+            if proposal_id not in known_proposals:
+                raise ValidationError(
+                    f"The row amendments[{index}] has the proposal_id {proposal_id!r}, and no "
+                    f"proposal has this id: proposal_id names the proposal that is the "
+                    f"amendment."
                 )
         revisions = [
             self._revision(row, f"revisions[{index}]")
@@ -254,6 +282,22 @@ class Dataset:
                     f"revision of this proposal."
                 )
             current[proposal.id] = found
+        amendments = [proposal for proposal in proposals if isinstance(proposal, Amendment)]
+        project_of = {proposal.id: proposal.project_id for proposal in proposals}
+        _check_amendments(amendments, links, by_proposal, project_of)
+        by_row = {amendment.amendment_id: amendment for amendment in amendments}
+        for revision in revisions:
+            if revision.amendment_id is not None and revision.amendment_id not in by_row:
+                raise ValidationError(
+                    f"The revision {revision.id!r} has the amendment_id "
+                    f"{revision.amendment_id!r}, and no row of the section 'amendments' has "
+                    f"this id: amendment_id names the amendment whose adoption produced it."
+                )
+        by_target: dict[str, list[Amendment]] = {}
+        amendments_by_project: dict[str, list[Amendment]] = {}
+        for amendment in amendments:
+            by_target.setdefault(amendment.target_id, []).append(amendment)
+            amendments_by_project.setdefault(amendment.project_id, []).append(amendment)
         by_project: dict[str, list[Proposal]] = {}
         revisions_by_project: dict[str, list[Revision]] = {}
         for proposal in proposals:
@@ -270,6 +314,72 @@ class Dataset:
         _set(self, "_proposals_by_project", _freeze(by_project))
         _set(self, "_revisions_by_project", _freeze(revisions_by_project))
         _set(self, "_vote_counts", _read_vote_counts(sections["vote_counts"], revisions))
+        _set(self, "_amendments_by_row", by_row)
+        _set(self, "_amendments_by_target", _freeze(by_target))
+        _set(self, "_amendments_by_project", _freeze(amendments_by_project))
+        return proposals
+
+    def _build_arguments(self, rows: list[_Row], proposals: list[Proposal]) -> None:
+        arguments = [self._argument(row, f"arguments[{index}]") for index, row in enumerate(rows)]
+        _check_unique(arguments, "arguments", ("id",))
+        known = {proposal.id: proposal for proposal in proposals}
+        by_id = {argument.id: argument for argument in arguments}
+        for index, argument in enumerate(arguments):
+            where = f"The row arguments[{index}] (id {argument.id!r})"
+            proposal = known.get(argument.proposal_id)
+            if proposal is None:
+                raise ValidationError(
+                    f"{where} has the proposal_id {argument.proposal_id!r}, and no proposal "
+                    f"has this id: proposal_id names a proposal of the dataset."
+                )
+            own = self._revisions_by_proposal[proposal.id]
+            if argument.revision_id is not None and own.get(argument.revision_id) is None:
+                raise ValidationError(
+                    f"{where} has the revision_id {argument.revision_id!r}, which is not a "
+                    f"revision of its proposal {proposal.id!r}."
+                )
+            if argument.parent_id is None:
+                continue
+            parent = by_id.get(argument.parent_id)
+            if parent is None:
+                raise ValidationError(
+                    f"{where} has the parent_id {argument.parent_id!r}, and no argument has "
+                    f"this id: parent_id names the argument it replies to."
+                )
+            if parent.proposal_id != argument.proposal_id:
+                raise ValidationError(
+                    f"{where} replies to the argument {parent.id!r}, which is about the "
+                    f"proposal {parent.proposal_id!r}, not {argument.proposal_id!r}: an "
+                    f"argument replies to an argument on the same proposal."
+                )
+        _check_tree(arguments, "arguments")
+        replies: dict[str, list[Argument]] = {}
+        roots: dict[str, list[Argument]] = {}
+        for argument in arguments:
+            if argument.parent_id is None:
+                roots.setdefault(argument.proposal_id, []).append(argument)
+            else:
+                replies.setdefault(argument.parent_id, []).append(argument)
+        depths: dict[str, int] = {}
+        by_proposal: dict[str, list[Argument]] = {}
+        by_project: dict[str, list[Argument]] = {}
+        for proposal in proposals:
+            ordered: list[Argument] = []
+            stack = [(0, root) for root in reversed(roots.get(proposal.id, []))]
+            while stack:
+                depth, argument = stack.pop()
+                depths[argument.id] = depth
+                ordered.append(argument)
+                children = replies.get(argument.id, [])
+                stack.extend((depth + 1, child) for child in reversed(children))
+            by_proposal[proposal.id] = ordered
+            by_project.setdefault(proposal.project_id, []).extend(ordered)
+        _set = object.__setattr__
+        _set(self, "_arguments", Listing(arguments))
+        _set(self, "_arguments_by_proposal", _freeze(by_proposal))
+        _set(self, "_arguments_by_project", _freeze(by_project))
+        _set(self, "_replies", _freeze(replies))
+        _set(self, "_depths", depths)
 
     def _group(self, row: _Row, where: str) -> Group:
         id = _identifier(row, "id", where)
@@ -295,23 +405,55 @@ class Dataset:
             group_id=_optional_identifier(row, "group_id", where),
         )
 
-    def _proposal(self, row: _Row, where: str) -> Proposal:
-        id = _identifier(row, "id", where)
-        where = f"{where} (id {id!r})"
+    def _author(self, row: _Row, where: str) -> str | None:
         author_id = _optional_identifier(row, "author_id", where)
         if author_id is not None and self._exposure is Exposure.AGGREGATED:
             raise ValidationError(
                 f"The row {where} has an author_id, and an aggregated dataset holds no "
                 f"pseudonym. Set exposure to 'pseudonymised', or leave author_id out."
             )
-        return Proposal(
+        return author_id
+
+    def _proposal(self, row: _Row, where: str, links: Mapping[str, tuple[int, _Row]]) -> Proposal:
+        id = _identifier(row, "id", where)
+        where = f"{where} (id {id!r})"
+        common: dict[str, Any] = {
+            "id": id,
+            "dataset": self,
+            "project_id": _identifier(row, "project_id", where),
+            "article_id": _optional_identifier(row, "article_id", where),
+            "author_id": self._author(row, where),
+            "created_at": _optional_text(row, "created_at", where),
+            "current_revision_id": _optional_identifier(row, "current_revision_id", where),
+        }
+        if id not in links:
+            return Proposal(**common)
+        index, link = links[id]
+        at = f"amendments[{index}] (id {link['id']!r})"
+        return Amendment(
+            **common,
+            amendment_id=link["id"],
+            target_id=_identifier(link, "target_proposal_id", at),
+            target_revision_id=_identifier(link, "target_revision_id", at),
+            status=_status(link, at),
+            adopted_revision_id=_optional_identifier(link, "adopted_revision_id", at),
+            is_stale=_flag(link, "stale", at),
+        )
+
+    def _argument(self, row: _Row, where: str) -> Argument:
+        id = _identifier(row, "id", where)
+        where = f"{where} (id {id!r})"
+        return Argument(
             id=id,
             dataset=self,
-            project_id=_identifier(row, "project_id", where),
-            article_id=_optional_identifier(row, "article_id", where),
-            author_id=author_id,
-            created_at=_optional_text(row, "created_at", where),
-            current_revision_id=_optional_identifier(row, "current_revision_id", where),
+            proposal_id=_identifier(row, "proposal_id", where),
+            revision_id=_optional_identifier(row, "revision_id", where),
+            author_id=self._author(row, where),
+            position=_position(row, where),
+            text=_text(row, "text", where),
+            score=_score(row, where),
+            parent_id=_optional_identifier(row, "parent_id", where),
+            n_supports=_non_negative(row, "n_supports", where),
         )
 
     def _revision(self, row: _Row, where: str) -> Revision:
@@ -381,6 +523,11 @@ class Dataset:
         The Proposals come in the order of their rows.
         """
         return self._revisions
+
+    @property
+    def arguments(self) -> Listing[Argument]:
+        """Every Argument of the dataset, in the order of the rows."""
+        return self._arguments
 
     def project(self, ref: str | None = None) -> Project:
         """Return the Project with this id or slug, or the only Project.
@@ -488,6 +635,27 @@ class Dataset:
 
     def _vote_counts_of(self, revision_id: str) -> VoteCounts:
         return self._vote_counts.get(revision_id, _NO_VOTE)
+
+    def _amendments_of(self, proposal_id: str) -> Listing[Amendment]:
+        return self._amendments_by_target.get(proposal_id, Listing())
+
+    def _amendments_in(self, project_id: str) -> Listing[Amendment]:
+        return self._amendments_by_project.get(project_id, Listing())
+
+    def _amendment_by_row(self, amendment_id: str) -> Amendment:
+        return self._amendments_by_row[amendment_id]
+
+    def _arguments_of(self, proposal_id: str) -> Listing[Argument]:
+        return self._arguments_by_proposal[proposal_id]
+
+    def _arguments_in(self, project_id: str) -> Listing[Argument]:
+        return self._arguments_by_project.get(project_id, Listing())
+
+    def _replies_to(self, argument_id: str) -> Listing[Argument]:
+        return self._replies.get(argument_id, Listing())
+
+    def _depth_of(self, argument_id: str) -> int:
+        return self._depths[argument_id]
 
 
 def _copy(rows: object) -> _Row:
@@ -630,20 +798,20 @@ def _check_unique(
             seen[value] = index
 
 
-def _check_tree(groups: list[Group]) -> None:
-    parent_of = {group.id: group.parent_id for group in groups}
-    for index, group in enumerate(groups):
-        path = [group.id]
-        parent = group.parent_id
+def _check_tree(items: Sequence[Group | Argument], section: str) -> None:
+    parent_of = {item.id: item.parent_id for item in items}
+    for index, item in enumerate(items):
+        path = [item.id]
+        parent = item.parent_id
         while parent is not None:
             path.append(parent)
-            if parent == group.id:
+            if parent == item.id:
                 raise ValidationError(
-                    f"The row groups[{index}] (id {group.id!r}) is its own ancestor: "
-                    f"{' -> '.join(path)}. The groups form a tree, through parent_id."
+                    f"The row {section}[{index}] (id {item.id!r}) is its own ancestor: "
+                    f"{' -> '.join(path)}. The {section} form a tree, through parent_id."
                 )
-            if len(path) > len(groups) + 1:
-                break  # a cycle above this group, reported from a group inside it
+            if len(path) > len(items) + 1:
+                break  # a cycle above this item, reported from an item inside it
             parent = parent_of.get(parent)
 
 
@@ -708,3 +876,142 @@ def _slugs(items: Listing[_SluggedT]) -> str:
 
 def _count(number: int, noun: str) -> str:
     return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
+
+
+def _read_amendment_links(rows: list[_Row]) -> dict[str, tuple[int, _Row]]:
+    ids: dict[str, int] = {}
+    links: dict[str, tuple[int, _Row]] = {}
+    for index, row in enumerate(rows):
+        id = _identifier(row, "id", f"amendments[{index}]")
+        if id in ids:
+            raise ValidationError(
+                f"The rows amendments[{ids[id]}] and amendments[{index}] have the same id "
+                f"{id!r}: an id appears once in the section 'amendments'."
+            )
+        ids[id] = index
+        proposal_id = _identifier(row, "proposal_id", f"amendments[{index}] (id {id!r})")
+        if proposal_id in links:
+            raise ValidationError(
+                f"The rows amendments[{links[proposal_id][0]}] and amendments[{index}] are both "
+                f"for the proposal {proposal_id!r}: a proposal has one row of amendment at most."
+            )
+        links[proposal_id] = (index, row)
+    return links
+
+
+def _check_amendments(
+    amendments: list[Amendment],
+    links: Mapping[str, tuple[int, _Row]],
+    revisions_by_proposal: Mapping[str, list[Revision]],
+    project_of: Mapping[str, str],
+) -> None:
+    by_id = {amendment.id: amendment for amendment in amendments}
+    for amendment in amendments:
+        index = links[amendment.id][0]
+        where = f"The row amendments[{index}] (id {amendment.amendment_id!r})"
+        target = amendment.target_id
+        if target not in revisions_by_proposal:
+            raise ValidationError(
+                f"{where} has the target_proposal_id {target!r}, and no proposal has this id: "
+                f"target_proposal_id names the proposal that the amendment targets."
+            )
+        if target == amendment.id:
+            raise ValidationError(
+                f"{where} makes the proposal {amendment.id!r} target itself: an amendment "
+                f"targets another proposal."
+            )
+        own = {revision.id for revision in revisions_by_proposal[target]}
+        if amendment.target_revision_id not in own:
+            raise ValidationError(
+                f"{where} has the target_revision_id {amendment.target_revision_id!r}, which "
+                f"is not a revision of its target {target!r}."
+            )
+        if amendment.adopted_revision_id is not None:
+            if amendment.status is not AmendmentStatus.ADOPTED:
+                raise ValidationError(
+                    f"{where} has an adopted_revision_id and the status "
+                    f"{amendment.status.value!r}: only an adopted amendment has one."
+                )
+            if amendment.adopted_revision_id not in own:
+                raise ValidationError(
+                    f"{where} has the adopted_revision_id {amendment.adopted_revision_id!r}, "
+                    f"which is not a revision of its target {target!r}."
+                )
+        target_project = project_of[target]
+        if target_project != amendment.project_id:
+            raise ValidationError(
+                f"{where} targets the proposal {target!r} of the project {target_project!r}, "
+                f"and the amendment {amendment.id!r} is in the project "
+                f"{amendment.project_id!r}: an amendment and its target share a project."
+            )
+    for amendment in amendments:
+        path = [amendment.id]
+        current: Amendment | None = amendment
+        while current is not None:
+            path.append(current.target_id)
+            if current.target_id == amendment.id:
+                index = links[amendment.id][0]
+                raise ValidationError(
+                    f"The amendment {amendment.id!r} (amendments[{index}]) targets itself "
+                    f"through {' -> '.join(path)}: the amendments of a proposal form a tree."
+                )
+            if len(path) > len(amendments) + 1:
+                break  # a cycle above this amendment, reported from an amendment inside it
+            current = by_id.get(current.target_id)
+
+
+def _status(row: _Row, where: str) -> AmendmentStatus:
+    value = row.get("status")
+    if value is None:
+        return AmendmentStatus.OPEN
+    if isinstance(value, str) and value.lower() in {status.value for status in AmendmentStatus}:
+        return AmendmentStatus(value.lower())
+    raise ValidationError(
+        f"The row {where} has the status {value!r}: the status of an amendment is 'open', "
+        f"'adopted' or 'rejected', in any case."
+    )
+
+
+def _flag(row: _Row, key: str, where: str) -> bool:
+    value = row.get(key)
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise ValidationError(
+            f"The row {where} has a {key!r} that is not true or false: {value!r}."
+        )
+    return value
+
+
+def _position(row: _Row, where: str) -> Position | None:
+    value = row.get("position")
+    if value is None:
+        return None
+    if isinstance(value, str) and value.lower() in {position.value for position in Position}:
+        return Position(value.lower())
+    raise ValidationError(
+        f"The row {where} has the position {value!r}: a position is 'pro', 'con' or "
+        f"'neutral', in any case."
+    )
+
+
+def _score(row: _Row, where: str) -> int | None:
+    value = row.get("score")
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool) and value in SCORES:
+        return value
+    raise ValidationError(
+        f"The row {where} has the score {value!r}: a score is an integer from -2 to +2."
+    )
+
+
+def _non_negative(row: _Row, key: str, where: str) -> int:
+    value = row.get(key)
+    if value is None:
+        return 0
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    raise ValidationError(
+        f"The row {where} has the {key} {value!r}: it is an integer, zero or more."
+    )
