@@ -23,4 +23,6 @@ These names are imported from `civiqhub`. Each one links to the module that defi
 
 civiqhub.errors
 civiqhub.values
+civiqhub.listing
+civiqhub.entities
 ```
