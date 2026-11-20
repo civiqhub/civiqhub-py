@@ -26,10 +26,12 @@ This builds the documentation of the code you have, as one site without versions
 | `_ext/civiqhub_docs.py` | A local Sphinx extension; its docstring says what it does |
 | `_templates/sidebar/version-switcher.html`, `_static/version-switcher.js`, `_static/version-switcher.css` | The version selector of the sidebar |
 | `index.md` | The home page and the table of contents of the site |
+| `getting-started.md`, `library-map.md`, `architecture.md` | The guide: a first Project, the name to use for each need, how the SDK is built |
+| `snippets.md` | The code of each use, in eight lines; `tests/test_snippets.py` runs it against a fake API |
 | `reference/` | The reference: one page per public module, generated from the docstrings |
 | `_build/` | The output of the build. Not committed |
 
-The guide (getting started, a map of the library, the architecture) is planned and not written yet.
+The pages of the bridge to the engine are planned and not written yet.
 
 ## How the site is published
 
