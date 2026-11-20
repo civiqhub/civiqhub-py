@@ -11,6 +11,7 @@ The SDK is not functional yet. The published version only reserves the `civiqhub
 :caption: Reference
 
 reference/index
+snippets
 ```
 
 ```{toctree}

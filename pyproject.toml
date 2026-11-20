@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "civiqhub"
 dynamic = ["version"]
-description = "Python package by CiviqHub. Preview, not functional yet."
+description = "The Python SDK of CiviqHub: the objects of a Project, read with a token."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MPL-2.0"
@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "CiviqHub", email = "contact@civiqhub.com" }]
 keywords = ["civiqhub", "collective decision"]
 classifiers = [
-  "Development Status :: 1 - Planning",
+  "Development Status :: 2 - Pre-Alpha",
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
