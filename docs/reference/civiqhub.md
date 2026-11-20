@@ -28,4 +28,5 @@ civiqhub.entities
 civiqhub.dataset
 civiqhub.sources
 civiqhub.client
+civiqhub.synthetic
 ```
