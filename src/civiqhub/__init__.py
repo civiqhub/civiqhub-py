@@ -11,12 +11,26 @@ The SDK is being written. It exposes ``__version__``, the errors of the SDK, def
 :class:`~civiqhub.dataset.Dataset` is built from rows and holds the objects of the product
 that are written so far: :class:`~civiqhub.entities.Group`,
 :class:`~civiqhub.entities.Project`, :class:`~civiqhub.entities.Proposal`,
-:class:`~civiqhub.entities.Amendment`, :class:`~civiqhub.entities.Revision` and
-:class:`~civiqhub.entities.Argument`.
+:class:`~civiqhub.entities.Amendment`, :class:`~civiqhub.entities.Revision`,
+:class:`~civiqhub.entities.Argument`, :class:`~civiqhub.entities.Actant` (with
+:class:`~civiqhub.entities.Member` and :class:`~civiqhub.entities.Agent`) and
+:class:`~civiqhub.entities.Vote`.
 """
 
 from .dataset import Dataset
-from .entities import Amendment, Argument, Entity, Group, Project, Proposal, Revision
+from .entities import (
+    Actant,
+    Agent,
+    Amendment,
+    Argument,
+    Entity,
+    Group,
+    Member,
+    Project,
+    Proposal,
+    Revision,
+    Vote,
+)
 from .errors import (
     AuthenticationError,
     CiviqHubError,
@@ -40,7 +54,9 @@ from .values import (
 )
 
 __all__ = [
+    "Actant",
     "ActantKind",
+    "Agent",
     "Amendment",
     "AmendmentStatus",
     "Argument",
@@ -52,6 +68,7 @@ __all__ = [
     "ExposureError",
     "Group",
     "Listing",
+    "Member",
     "MissingExtraError",
     "NotFoundError",
     "Participation",
@@ -63,6 +80,7 @@ __all__ = [
     "Role",
     "UnavailableError",
     "ValidationError",
+    "Vote",
     "VoteCounts",
     "VoteState",
     "__version__",

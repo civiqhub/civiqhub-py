@@ -24,6 +24,10 @@ ticket of the model adds the sections it builds.
       arg-4          depth 0
         arg-5        depth 1
         arg-6        depth 1
+
+    At the pseudonymised level, four actants: the members m-001, m-002 and m-003, and
+    the agent g-001. m-003 voted only on p-01.r1, the old revision of p-01; p-01.r2 was
+    shown to m-003, who did not vote on it.
 """
 
 from typing import Any
@@ -32,15 +36,15 @@ from civiqhub.dataset import FORMAT
 
 AS_OF = "2026-11-16T09:00:00Z"
 
-#: The participation of the reference Project: 6 voters out of 8 actants.
+#: The participation of the reference Project: 3 voters out of 4 actants.
 PARTICIPATION: dict[str, Any] = {
     "project_id": "budget-2027",
     "n_proposals": 3,
     "n_amendments": 3,
     "n_arguments": 6,
-    "n_votes": 16,
-    "n_actants": 8,
-    "n_voters": 6,
+    "n_votes": 12,
+    "n_actants": 4,
+    "n_voters": 3,
 }
 TURNOUT = 0.75
 
@@ -69,9 +73,9 @@ REVISIONS: tuple[tuple[str, str, int, str, str | None], ...] = (
 # The counts of each revision, from score -2 to score +2. p-03.r1 has no row.
 VOTE_COUNTS: dict[str, list[int]] = {
     "p-01.r1": [0, 1, 0, 1, 0],
-    "p-01.r2": [1, 0, 1, 2, 2],
+    "p-01.r2": [1, 0, 0, 1, 1],
     "p-02.r1": [0, 0, 1, 1, 0],
-    "p-02.r2": [0, 1, 1, 1, 1],
+    "p-02.r2": [0, 1, 1, 1, 0],
     "p-04.r1": [0, 0, 0, 1, 2],
     "p-05.r1": [1, 1, 0, 0, 0],
     "p-06.r1": [0, 0, 1, 0, 0],
@@ -146,6 +150,51 @@ ARGUMENTS: tuple[dict[str, Any], ...] = (
 )
 
 
+# (pseudonym, kind, role)
+ACTANTS: tuple[tuple[str, str, str | None], ...] = (
+    ("m-001", "human", "participant"),
+    ("m-002", "human", "Moderator"),
+    ("m-003", "human", None),
+    ("g-001", "agent", "participant"),
+)
+
+# (actant, revision, score): they give the vote counts above, revision by revision.
+VOTES: tuple[tuple[str, str, int], ...] = (
+    ("m-001", "p-01.r1", 1),
+    ("m-003", "p-01.r1", -1),
+    ("m-001", "p-01.r2", 2),
+    ("m-002", "p-01.r2", -2),
+    ("g-001", "p-01.r2", 1),
+    ("m-001", "p-02.r1", 0),
+    ("m-002", "p-02.r1", 1),
+    ("m-001", "p-02.r2", 1),
+    ("m-002", "p-02.r2", 0),
+    ("g-001", "p-02.r2", -1),
+    ("m-001", "p-04.r1", 2),
+    ("m-002", "p-04.r1", 2),
+    ("g-001", "p-04.r1", 1),
+    ("m-001", "p-05.r1", -2),
+    ("m-002", "p-05.r1", -1),
+    ("g-001", "p-06.r1", 0),
+)
+
+# The revisions shown to an actant. A vote counts as shown even when it is not listed.
+IMPRESSIONS: tuple[tuple[str, str], ...] = (
+    ("m-001", "p-01.r2"),
+    ("m-003", "p-01.r2"),
+    ("m-003", "p-02.r2"),
+)
+
+# The authors, at the pseudonymised level only.
+AUTHORS: dict[str, str] = {
+    "p-01": "m-001",
+    "p-04": "m-002",
+    "p-05": "m-003",
+    "arg-1": "m-002",
+    "arg-4": "g-001",
+}
+
+
 def minimal_rows() -> dict[str, Any]:
     """Return fresh minimal rows: one Group, one Project and its participation."""
     return {
@@ -206,4 +255,31 @@ def reference_rows() -> dict[str, Any]:
     ]
     rows["amendments"] = [dict(row) for row in AMENDMENTS]
     rows["arguments"] = [dict(row) for row in ARGUMENTS]
+    return rows
+
+
+def pseudonymised_rows(*, impressions: bool = True) -> dict[str, Any]:
+    """Return fresh reference rows at the pseudonymised level, with actants and votes.
+
+    Args:
+        impressions: Whether the rows say which revisions were shown to which actants.
+    """
+    rows = reference_rows()
+    rows["exposure"] = "pseudonymised"
+    for section in ("proposals", "arguments"):
+        for row in rows[section]:
+            if row["id"] in AUTHORS:
+                row["author_id"] = AUTHORS[row["id"]]
+    rows["actants"] = [
+        {"pseudonym": pseudonym, "kind": kind, **({"role": role} if role else {})}
+        for pseudonym, kind, role in ACTANTS
+    ]
+    rows["votes"] = [
+        {"actant": actant, "revision_id": revision_id, "score": score, "cast_at": AS_OF}
+        for actant, revision_id, score in VOTES
+    ]
+    if impressions:
+        rows["impressions"] = [
+            {"actant": actant, "revision_id": revision_id} for actant, revision_id in IMPRESSIONS
+        ]
     return rows

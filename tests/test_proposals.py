@@ -13,7 +13,7 @@ from civiqhub.dataset import Dataset
 from civiqhub.entities import Proposal, Revision
 from civiqhub.errors import ValidationError
 from civiqhub.values import VoteCounts
-from support import PARTICIPATION, VOTE_COUNTS, reference_rows
+from support import PARTICIPATION, VOTE_COUNTS, pseudonymised_rows, reference_rows
 
 
 def reference() -> Dataset:
@@ -53,7 +53,7 @@ def test_the_revisions_are_ordered_whatever_the_order_of_their_rows() -> None:
 
 def test_the_vote_counts_of_a_proposal_are_those_of_its_current_revision() -> None:
     proposal = reference().proposals["p-01"]
-    assert proposal.vote_counts == VoteCounts((1, 0, 1, 2, 2))
+    assert proposal.vote_counts == VoteCounts((1, 0, 0, 1, 1))
     assert proposal.vote_counts is proposal.current_revision.vote_counts
     total = sum(revision.vote_counts.total for revision in proposal.revisions)
     assert proposal.vote_counts.total != total
@@ -113,10 +113,9 @@ def test_an_aggregated_dataset_holds_no_author() -> None:
 
 
 def test_a_pseudonymised_dataset_keeps_the_author() -> None:
-    rows = reference_rows()
-    rows["exposure"] = "pseudonymised"
-    rows["proposals"][0]["author_id"] = "ps-ana"
-    assert Dataset(rows).proposals["p-01"].author_id == "ps-ana"
+    dataset = Dataset(pseudonymised_rows())
+    assert dataset.proposals["p-01"].author_id == "m-001"
+    assert dataset.proposals["p-02"].author_id is None
 
 
 def test_the_article_id_is_kept_as_given_or_none() -> None:

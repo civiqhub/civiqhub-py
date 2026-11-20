@@ -13,7 +13,7 @@ from civiqhub.dataset import Dataset
 from civiqhub.entities import Argument
 from civiqhub.errors import ValidationError
 from civiqhub.values import Position
-from support import reference_rows
+from support import pseudonymised_rows, reference_rows
 
 
 def reference() -> Dataset:
@@ -152,8 +152,7 @@ def test_an_aggregated_dataset_holds_no_author_of_an_argument() -> None:
     argument_row(rows, "arg-2")["author_id"] = "ps-ana"
     with pytest.raises(ValidationError, match=r"\(id 'arg-2'\) has an author_id"):
         Dataset(rows)
-    rows["exposure"] = "pseudonymised"
-    assert Dataset(rows).arguments["arg-2"].author_id == "ps-ana"
+    assert Dataset(pseudonymised_rows()).arguments["arg-1"].author_id == "m-002"
 
 
 def test_an_argument_has_its_own_id() -> None:

@@ -17,7 +17,14 @@ from civiqhub.entities import Group, Project
 from civiqhub.errors import ExposureError, NotFoundError, ValidationError
 from civiqhub.listing import Listing
 from civiqhub.values import Exposure, Participation
-from support import AS_OF, PARTICIPATION, TURNOUT, minimal_rows, reference_rows
+from support import (
+    AS_OF,
+    PARTICIPATION,
+    TURNOUT,
+    minimal_rows,
+    pseudonymised_rows,
+    reference_rows,
+)
 
 RESERVED = ("articles", "article_versions", "paragraphs", "placements", "citations")
 
@@ -290,9 +297,7 @@ def test_an_aggregated_dataset_refuses_individual_rows(section: str) -> None:
         Dataset(rows)
     rows[section] = []
     Dataset(rows)
-    rows["exposure"] = "pseudonymised"
-    rows[section] = [{"id": "ps-1"}]
-    Dataset(rows)
+    assert len(Dataset(pseudonymised_rows()).to_dict()[section]) > 0
 
 
 @pytest.mark.parametrize(
@@ -322,7 +327,7 @@ def test_exposure_is_aggregated_or_pseudonymised(value: object) -> None:
 def test_the_participation_of_a_project_is_read_from_its_row() -> None:
     participation = Dataset(minimal_rows()).project().participation
     assert participation == Participation(
-        n_proposals=3, n_amendments=3, n_arguments=6, n_votes=16, n_actants=8, n_voters=6
+        n_proposals=3, n_amendments=3, n_arguments=6, n_votes=12, n_actants=4, n_voters=3
     )
     assert participation.turnout == TURNOUT
 

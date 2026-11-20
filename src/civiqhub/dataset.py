@@ -9,10 +9,11 @@ can write, with an entry ``format``, an instant ``as_of``, a level of ``exposure
 list of rows per section. A missing section is an empty list, and a key that a row does
 not need is ignored.
 
-This version builds eight sections: ``groups``, ``projects``, ``participation``,
-``proposals``, ``revisions``, ``vote_counts``, ``amendments`` and ``arguments``. The other
-sections of the format (``articles``, ``article_versions``, ``paragraphs``, ``placements``,
-``citations``, ``actants``, ``votes`` and ``impressions``) are kept as they are. They count
+This version builds eleven sections: ``groups``, ``projects``, ``participation``,
+``proposals``, ``revisions``, ``vote_counts``, ``amendments``, ``arguments``, and, in a
+pseudonymised dataset only, ``actants``, ``votes`` and ``impressions``. The sections of the
+articles (``articles``, ``article_versions``, ``paragraphs``, ``placements`` and
+``citations``) are kept as they are. They count
 in the fingerprint and come back from :meth:`Dataset.to_dict`, but no object is built from
 them yet.
 """
@@ -24,10 +25,31 @@ from dataclasses import fields
 from datetime import datetime, timedelta
 from typing import Any, TypeVar
 
-from .entities import Amendment, Argument, Entity, Group, Project, Proposal, Revision
+from .entities import (
+    Actant,
+    Agent,
+    Amendment,
+    Argument,
+    Entity,
+    Group,
+    Member,
+    Project,
+    Proposal,
+    Revision,
+    Vote,
+)
 from .errors import ExposureError, NotFoundError, ValidationError
 from .listing import Listing
-from .values import SCORES, AmendmentStatus, Exposure, Participation, Position, VoteCounts
+from .values import (
+    SCORES,
+    ActantKind,
+    AmendmentStatus,
+    Exposure,
+    Participation,
+    Position,
+    Role,
+    VoteCounts,
+)
 
 __all__ = ["FORMAT", "Dataset"]
 
@@ -57,6 +79,9 @@ _SECTIONS = (
 
 # The sections that describe individuals; an aggregated dataset leaves them empty.
 _INDIVIDUAL = ("actants", "votes", "impressions")
+
+# The keys that would bring personal data into a row of actants.
+_PERSONAL = ("name", "email", "handle", "user_id")
 
 # How many slugs a message cites at most.
 _CITED = 8
@@ -89,10 +114,12 @@ class Dataset:
     """
 
     __slots__ = (
+        "_actants",
         "_amendments_by_project",
         "_amendments_by_row",
         "_amendments_by_target",
         "_arguments",
+        "_arguments_by_author",
         "_arguments_by_project",
         "_arguments_by_proposal",
         "_as_of",
@@ -101,6 +128,7 @@ class Dataset:
         "_depths",
         "_exposure",
         "_groups",
+        "_impressions",
         "_participation",
         "_projects",
         "_projects_by_group",
@@ -113,13 +141,20 @@ class Dataset:
         "_rows",
         "_source",
         "_vote_counts",
+        "_votes",
+        "_votes_by_actant",
+        "_votes_by_pair",
+        "_votes_by_project",
+        "_votes_by_revision",
     )
 
+    _actants: Listing[Actant]
     _amendments_by_project: dict[str, Listing[Amendment]]
     _amendments_by_row: dict[str, Amendment]
     _amendments_by_target: dict[str, Listing[Amendment]]
     _arguments: Listing[Argument]
     _arguments_by_project: dict[str, Listing[Argument]]
+    _arguments_by_author: dict[str, Listing[Argument]]
     _arguments_by_proposal: dict[str, Listing[Argument]]
     _as_of: str
     _children: dict[str, Listing[Group]]
@@ -127,6 +162,7 @@ class Dataset:
     _depths: dict[str, int]
     _exposure: Exposure
     _groups: Listing[Group]
+    _impressions: frozenset[tuple[str, str]] | None
     _participation: dict[str, Participation]
     _projects: Listing[Project]
     _projects_by_group: dict[str, Listing[Project]]
@@ -139,6 +175,11 @@ class Dataset:
     _rows: _Row
     _source: str
     _vote_counts: dict[str, VoteCounts]
+    _votes: Listing[Vote]
+    _votes_by_actant: dict[str, Listing[Vote]]
+    _votes_by_pair: dict[tuple[str, str], Vote]
+    _votes_by_project: dict[str, Listing[Vote]]
+    _votes_by_revision: dict[str, Listing[Vote]]
 
     def __init__(self, rows: Mapping[str, Any], *, source: str = "memory") -> None:
         if not isinstance(source, str):
@@ -168,6 +209,9 @@ class Dataset:
         projects = self._build_groups(sections)
         proposals = self._build_proposals(sections, projects)
         self._build_arguments(sections["arguments"], proposals)
+        self._build_actants(
+            sections, has_votes="votes" in data, has_impressions="impressions" in data
+        )
 
     def _build_groups(self, sections: Mapping[str, list[_Row]]) -> list[Project]:
         groups = [
@@ -381,6 +425,95 @@ class Dataset:
         _set(self, "_replies", _freeze(replies))
         _set(self, "_depths", depths)
 
+    def _build_actants(
+        self, sections: Mapping[str, list[_Row]], *, has_votes: bool, has_impressions: bool
+    ) -> None:
+        actants = [
+            self._actant(row, f"actants[{index}]") for index, row in enumerate(sections["actants"])
+        ]
+        seen: dict[str, int] = {}
+        for index, actant in enumerate(actants):
+            if actant.id in seen:
+                raise ValidationError(
+                    f"The rows actants[{seen[actant.id]}] and actants[{index}] have the same "
+                    f"pseudonym {actant.id!r}: a pseudonym appears once in the section 'actants'."
+                )
+            seen[actant.id] = index
+        authored: list[Proposal | Argument] = [*self._proposals, *self._arguments]
+        for item in authored:
+            if item.author_id is not None and item.author_id not in seen:
+                raise ValidationError(
+                    f"The {item.noun} {item.id!r} has the author_id {item.author_id!r}, and no "
+                    f"actant has this pseudonym: author_id names an actant of the dataset."
+                )
+        revisions = {revision.id for revision in self._revisions}
+        votes: list[Vote] = []
+        pairs: dict[tuple[str, str], int] = {}
+        for index, row in enumerate(sections["votes"]):
+            where = f"votes[{index}]"
+            actant_id, revision_id = _pair(row, where, seen, revisions)
+            where = f"{where} (vote {actant_id + '@' + revision_id!r})"
+            if (actant_id, revision_id) in pairs:
+                raise ValidationError(
+                    f"The rows votes[{pairs[actant_id, revision_id]}] and votes[{index}] are "
+                    f"both votes of {actant_id!r} on the revision {revision_id!r}: an actant has "
+                    f"one vote per revision. Keep the latest."
+                )
+            pairs[actant_id, revision_id] = index
+            votes.append(
+                Vote(
+                    id=f"{actant_id}@{revision_id}",
+                    dataset=self,
+                    actant_id=actant_id,
+                    revision_id=revision_id,
+                    score=_vote_score(row, where),
+                    cast_at=_optional_text(row, "cast_at", where),
+                )
+            )
+        impressions = frozenset(
+            _pair(row, f"impressions[{index}]", seen, revisions)
+            for index, row in enumerate(sections["impressions"])
+        )
+        by_revision: dict[str, list[Vote]] = {}
+        by_actant: dict[str, list[Vote]] = {}
+        for vote in votes:
+            by_revision.setdefault(vote.revision_id, []).append(vote)
+            by_actant.setdefault(vote.actant_id, []).append(vote)
+        by_project = {
+            project_id: [vote for r in own for vote in by_revision.get(r.id, [])]
+            for project_id, own in self._revisions_by_project.items()
+        }
+        by_author: dict[str, list[Argument]] = {}
+        for argument in self._arguments:
+            if argument.author_id is not None:
+                by_author.setdefault(argument.author_id, []).append(argument)
+        _set = object.__setattr__
+        if has_votes and self._exposure is Exposure.PSEUDONYMISED:
+            _set(
+                self, "_vote_counts", _count_votes(self._revisions, by_revision, self._vote_counts)
+            )
+        _set(self, "_actants", Listing(actants))
+        _set(self, "_votes", Listing(votes))
+        _set(self, "_votes_by_revision", _freeze(by_revision))
+        _set(self, "_votes_by_actant", _freeze(by_actant))
+        _set(self, "_votes_by_project", _freeze(by_project))
+        _set(self, "_votes_by_pair", {(v.actant_id, v.revision_id): v for v in votes})
+        _set(self, "_impressions", impressions if has_impressions else None)
+        _set(self, "_arguments_by_author", _freeze(by_author))
+
+    def _actant(self, row: _Row, where: str) -> Actant:
+        pseudonym = _identifier(row, "pseudonym", where)
+        where = f"{where} (pseudonym {pseudonym!r})"
+        for key in _PERSONAL:
+            if key in row:
+                raise ValidationError(
+                    f"The row {where} has the key {key!r}: the SDK refuses personal data and "
+                    f"knows an actant by its pseudonym only. Leave {key!r} out."
+                )
+        kind = _kind(row, where)
+        cls = {ActantKind.HUMAN: Member, ActantKind.AGENT: Agent}.get(kind, Actant)
+        return cls(id=pseudonym, dataset=self, kind=kind, role=_role(row, where))
+
     def _group(self, row: _Row, where: str) -> Group:
         id = _identifier(row, "id", where)
         where = f"{where} (id {id!r})"
@@ -529,6 +662,24 @@ class Dataset:
         """Every Argument of the dataset, in the order of the rows."""
         return self._arguments
 
+    @property
+    def actants(self) -> Listing[Actant]:
+        """Every Actant of the dataset, in the order of the rows; empty when aggregated."""
+        return self._actants
+
+    @property
+    def votes(self) -> Listing[Vote]:
+        """Every vote of the dataset, in the order of the rows; empty when aggregated."""
+        return self._votes
+
+    @property
+    def has_impressions(self) -> bool:
+        """Whether the rows say which Revisions were shown to which Actants.
+
+        It is true when the rows hold the section ``impressions``, even empty.
+        """
+        return self._impressions is not None
+
     def project(self, ref: str | None = None) -> Project:
         """Return the Project with this id or slug, or the only Project.
 
@@ -656,6 +807,24 @@ class Dataset:
 
     def _depth_of(self, argument_id: str) -> int:
         return self._depths[argument_id]
+
+    def _votes_on(self, revision_id: str) -> Listing[Vote]:
+        return self._votes_by_revision.get(revision_id, Listing())
+
+    def _votes_of(self, actant_id: str) -> Listing[Vote]:
+        return self._votes_by_actant.get(actant_id, Listing())
+
+    def _votes_in(self, project_id: str) -> Listing[Vote]:
+        return self._votes_by_project.get(project_id, Listing())
+
+    def _vote_of(self, actant_id: str, revision_id: str) -> Vote | None:
+        return self._votes_by_pair.get((actant_id, revision_id))
+
+    def _was_shown(self, actant_id: str, revision_id: str) -> bool:
+        return self._impressions is not None and (actant_id, revision_id) in self._impressions
+
+    def _arguments_by(self, actant_id: str) -> Listing[Argument]:
+        return self._arguments_by_author.get(actant_id, Listing())
 
 
 def _copy(rows: object) -> _Row:
@@ -1014,4 +1183,74 @@ def _non_negative(row: _Row, key: str, where: str) -> int:
         return value
     raise ValidationError(
         f"The row {where} has the {key} {value!r}: it is an integer, zero or more."
+    )
+
+
+def _pair(
+    row: _Row, where: str, actants: Mapping[str, int], revisions: set[str]
+) -> tuple[str, str]:
+    actant_id = _identifier(row, "actant", where)
+    revision_id = _identifier(row, "revision_id", where)
+    if actant_id not in actants:
+        raise ValidationError(
+            f"The row {where} has the actant {actant_id!r}, and no actant has this pseudonym: "
+            f"actant names an actant of the dataset."
+        )
+    if revision_id not in revisions:
+        raise ValidationError(
+            f"The row {where} has the revision_id {revision_id!r}, and no revision has this "
+            f"id: revision_id names a revision of the dataset."
+        )
+    return actant_id, revision_id
+
+
+def _vote_score(row: _Row, where: str) -> int:
+    value = row.get("score")
+    if isinstance(value, int) and not isinstance(value, bool) and value in SCORES:
+        return value
+    raise ValidationError(
+        f"The row {where} has the score {value!r}: a score is an integer from -2 to +2. An "
+        f"abstention is the absence of a vote, not a score."
+    )
+
+
+def _count_votes(
+    revisions: Sequence[Revision],
+    votes: Mapping[str, list[Vote]],
+    given: Mapping[str, VoteCounts],
+) -> dict[str, VoteCounts]:
+    counts: dict[str, VoteCounts] = {}
+    for revision in revisions:
+        counted = VoteCounts.from_scores(vote.score for vote in votes.get(revision.id, []))
+        row = given.get(revision.id)
+        if row is not None and row != counted:
+            raise ValidationError(
+                f"The vote counts of the revision {revision.id!r} are {row!r} in the section "
+                f"'vote_counts', and its votes give {counted!r}: the two must agree."
+            )
+        counts[revision.id] = counted
+    return counts
+
+
+def _kind(row: _Row, where: str) -> ActantKind:
+    value = row.get("kind")
+    if value is None:
+        return ActantKind.HUMAN
+    if isinstance(value, str) and value.lower() in {kind.value for kind in ActantKind}:
+        return ActantKind(value.lower())
+    raise ValidationError(
+        f"The row {where} has the kind {value!r}: the kind of an actant is 'human', 'agent' "
+        f"or 'other', in any case."
+    )
+
+
+def _role(row: _Row, where: str) -> Role | None:
+    value = row.get("role")
+    if value is None:
+        return None
+    if isinstance(value, str) and value.upper() in Role.__members__:
+        return Role[value.upper()]
+    names = ", ".join(repr(role.name.lower()) for role in Role)
+    raise ValidationError(
+        f"The row {where} has the role {value!r}: a role is one of {names}, in any case."
     )
