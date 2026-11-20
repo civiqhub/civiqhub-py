@@ -85,7 +85,7 @@ _SECTIONS = (
 _INDIVIDUAL = ("actants", "votes", "impressions")
 
 # The keys that would bring personal data into a row of actants.
-_PERSONAL = ("name", "email", "handle", "user_id")
+_PERSONAL = ("name", "email", "handle", "username", "user_id", "first_name", "last_name")
 
 # How many slugs a message cites at most.
 _CITED = 8

@@ -2,9 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import tomllib
 from importlib.metadata import version
+from importlib.resources import files
+from pathlib import Path
 
 import civiqhub
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_version_is_exposed() -> None:
@@ -64,3 +69,15 @@ def test_the_public_names_are_the_expected_ones() -> None:
 def test_every_public_name_is_importable() -> None:
     for name in civiqhub.__all__:
         assert getattr(civiqhub, name) is not None, name
+
+
+def test_the_installed_package_holds_py_typed() -> None:
+    assert files("civiqhub").joinpath("py.typed").is_file()
+
+
+def test_the_wheel_ships_the_whole_package_folder_with_py_typed() -> None:
+    """The wheel takes every file of src/civiqhub; nothing in the configuration drops one."""
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    wheel = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]
+    assert wheel == {"packages": ["src/civiqhub"]}
+    assert (ROOT / "src" / "civiqhub" / "py.typed").is_file()
