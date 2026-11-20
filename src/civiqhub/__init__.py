@@ -5,10 +5,12 @@
 """Python package by CiviqHub: preview, not functional yet.
 
 The SDK is being written. It exposes ``__version__``, the errors of the SDK, defined in
-:mod:`civiqhub.errors`, and the values that the objects of a Project carry, defined in
-:mod:`civiqhub.values`.
+:mod:`civiqhub.errors`, the values that the objects of a Project carry, defined in
+:mod:`civiqhub.values`, and the two bricks that every object of the product shares:
+:class:`~civiqhub.listing.Listing` and :class:`~civiqhub.entities.Entity`.
 """
 
+from .entities import Entity
 from .errors import (
     AuthenticationError,
     CiviqHubError,
@@ -19,6 +21,7 @@ from .errors import (
     UnavailableError,
     ValidationError,
 )
+from .listing import Listing
 from .values import (
     ActantKind,
     AmendmentStatus,
@@ -35,8 +38,10 @@ __all__ = [
     "AmendmentStatus",
     "AuthenticationError",
     "CiviqHubError",
+    "Entity",
     "Exposure",
     "ExposureError",
+    "Listing",
     "MissingExtraError",
     "NotFoundError",
     "Participation",
