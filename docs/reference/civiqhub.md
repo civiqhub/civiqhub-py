@@ -25,4 +25,5 @@ civiqhub.errors
 civiqhub.values
 civiqhub.listing
 civiqhub.entities
+civiqhub.dataset
 ```

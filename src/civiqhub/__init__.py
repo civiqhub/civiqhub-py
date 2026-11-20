@@ -7,10 +7,13 @@
 The SDK is being written. It exposes ``__version__``, the errors of the SDK, defined in
 :mod:`civiqhub.errors`, the values that the objects of a Project carry, defined in
 :mod:`civiqhub.values`, and the two bricks that every object of the product shares:
-:class:`~civiqhub.listing.Listing` and :class:`~civiqhub.entities.Entity`.
+:class:`~civiqhub.listing.Listing` and :class:`~civiqhub.entities.Entity`. A
+:class:`~civiqhub.dataset.Dataset` is built from rows and holds the Groups and the
+Projects, :class:`~civiqhub.entities.Group` and :class:`~civiqhub.entities.Project`.
 """
 
-from .entities import Entity
+from .dataset import Dataset
+from .entities import Entity, Group, Project
 from .errors import (
     AuthenticationError,
     CiviqHubError,
@@ -38,14 +41,17 @@ __all__ = [
     "AmendmentStatus",
     "AuthenticationError",
     "CiviqHubError",
+    "Dataset",
     "Entity",
     "Exposure",
     "ExposureError",
+    "Group",
     "Listing",
     "MissingExtraError",
     "NotFoundError",
     "Participation",
     "Position",
+    "Project",
     "RateLimitedError",
     "Role",
     "UnavailableError",
