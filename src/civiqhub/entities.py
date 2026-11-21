@@ -6,9 +6,9 @@
 
 :class:`Entity` is what every object of the product shares: a frozen value, known by its
 id, tied to the :class:`~civiqhub.dataset.Dataset` it comes from. :class:`Group`,
-:class:`Project`, :class:`Proposal`, :class:`Amendment`, :class:`Revision`,
-:class:`Argument`, :class:`Actant` (with :class:`Member` and :class:`Agent`) and
-:class:`Vote` are the objects of the product.
+:class:`Project`, :class:`Article` (with its :class:`ArticleVersion`), :class:`Proposal`,
+:class:`Amendment`, :class:`Revision`, :class:`Argument`, :class:`Actant` (with
+:class:`Member` and :class:`Agent`) and :class:`Vote` are the objects of the product.
 
 Actants and votes exist only in a pseudonymised dataset. In an aggregated one, reading
 them raises :class:`~civiqhub.errors.ExposureError`.
@@ -38,6 +38,8 @@ __all__ = [
     "Agent",
     "Amendment",
     "Argument",
+    "Article",
+    "ArticleVersion",
     "Entity",
     "Group",
     "Member",
@@ -142,8 +144,8 @@ class Group(Entity):
 class Project(Entity):
     """A Project of a Group: the set of its articles and of their versions.
 
-    Every proposal of a Project has a parent article. This version of the SDK does not
-    read the articles yet.
+    Every proposal of a Project has a parent article. :attr:`articles` gives the articles
+    in the order of the Project.
 
     ``repr`` shows its id and its name, such as
     ``Project('budget-2027', 'Budget participatif')``.
@@ -188,6 +190,15 @@ class Project(Entity):
     def participation(self) -> Participation:
         """The counts of what happened in the Project, as the source gave them."""
         return self.dataset._participation_of(self.id)
+
+    @property
+    def articles(self) -> "Listing[Article]":
+        """The articles of the Project, in the order of their positions.
+
+        The order is the one the source gives in the key ``position`` of the rows: the
+        same rows give the same order, load after load.
+        """
+        return self.dataset._articles_in(self.id)
 
     @property
     def proposals(self) -> "Listing[Proposal]":
@@ -237,6 +248,99 @@ class Project(Entity):
         """
         self.dataset.require_individual_votes("project.votes")
         return self.dataset._votes_in(self.id)
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Article(Entity):
+    """An article of a Project: a text in numbered versions, which Proposals belong to.
+
+    A Project is the set of its articles and of their versions. An article keeps every
+    version it had; :attr:`current_version` is the one in force.
+
+    ``repr`` shows its id and its title, such as ``Article('art-1', 'Green spaces')``.
+
+    Args:
+        id: The id of the article.
+        dataset: The dataset that the article comes from.
+        project_id: The id of the Project of the article.
+        position: The place of the article in its Project, from 1, unique within the
+            Project.
+        title: The title of the article.
+        description: The description of the article.
+        current_version_number: The number of the version in force.
+        published_at: When the version in force was published, in ISO 8601, or ``None``.
+    """
+
+    project_id: str
+    position: int = 1
+    title: str = ""
+    description: str = ""
+    current_version_number: int = 1
+    published_at: str | None = None
+
+    #: The name of an article in messages.
+    noun: ClassVar[str] = "article"
+
+    def _label(self) -> str:
+        return self.title
+
+    @property
+    def project(self) -> Project:
+        """The Project of the article."""
+        return self.dataset.projects[self.project_id]
+
+    @property
+    def versions(self) -> "Listing[ArticleVersion]":
+        """Every version of the article, by number."""
+        return self.dataset._versions_of(self.id)
+
+    @property
+    def current_version(self) -> "ArticleVersion":
+        """The version in force, the one numbered ``current_version_number``."""
+        return self.dataset._current_version_of(self.id)
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class ArticleVersion(Entity):
+    """One numbered version of an article, frozen as it was published.
+
+    A version never changes: a new text is a new version. The rows of versions carry no
+    id of their own, so the id of a version is the id of its article and its number,
+    such as ``art-1.v3``.
+
+    ``repr`` shows its id and its number, such as ``ArticleVersion('art-1.v3', 'v3')``.
+
+    Args:
+        id: The id of the version.
+        dataset: The dataset that the version comes from.
+        article_id: The id of the article of the version.
+        number: The number of the version, from 1, unique within its article.
+        title: The title of the article in this version.
+        body: The text of the article in this version.
+        published_at: When the version was published, in ISO 8601, or ``None``.
+    """
+
+    article_id: str
+    number: int = 1
+    title: str = ""
+    body: str = ""
+    published_at: str | None = None
+
+    #: The name of an article version in messages.
+    noun: ClassVar[str] = "article version"
+
+    def _label(self) -> str:
+        return f"v{self.number}"
+
+    @property
+    def article(self) -> Article:
+        """The article of the version."""
+        return self.dataset.articles[self.article_id]
+
+    @property
+    def is_current(self) -> bool:
+        """Whether the version is the one in force for its article."""
+        return self.dataset._current_version_of(self.article_id) is self
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)

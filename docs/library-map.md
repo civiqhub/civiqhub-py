@@ -12,6 +12,7 @@ Every name below is exported by the package: `import civiqhub` is enough, and {p
 | --- | --- | --- |
 | Load the Project that my token covers | {py:func}`civiqhub.connect`, then {py:meth}`Client.project <civiqhub.client.Client.project>` | [`client`](reference/civiqhub.client.md) |
 | List the Projects of a Group | {py:meth}`Client.group <civiqhub.client.Client.group>`, {py:attr}`Group.projects <civiqhub.entities.Group.projects>` | [`client`](reference/civiqhub.client.md), [`entities`](reference/civiqhub.entities.md) |
+| Read the articles of a Project and their versions | {py:attr}`Project.articles <civiqhub.entities.Project.articles>`, {py:class}`civiqhub.Article`, {py:attr}`Article.current_version <civiqhub.entities.Article.current_version>`, {py:class}`civiqhub.ArticleVersion` | [`entities`](reference/civiqhub.entities.md) |
 | Read the Proposals and their Revisions | {py:attr}`Project.proposals <civiqhub.entities.Project.proposals>`, {py:attr}`Proposal.revisions <civiqhub.entities.Proposal.revisions>`, {py:attr}`Proposal.current_revision <civiqhub.entities.Proposal.current_revision>` | [`entities`](reference/civiqhub.entities.md) |
 | Walk the tree of the Amendments | {py:class}`civiqhub.Amendment`, {py:meth}`Proposal.walk_amendments <civiqhub.entities.Proposal.walk_amendments>` | [`entities`](reference/civiqhub.entities.md) |
 | Walk the tree of the Arguments | {py:attr}`Proposal.arguments <civiqhub.entities.Proposal.arguments>`, {py:attr}`Argument.depth <civiqhub.entities.Argument.depth>`, {py:class}`civiqhub.Position` | [`entities`](reference/civiqhub.entities.md), [`values`](reference/civiqhub.values.md) |
@@ -91,4 +92,4 @@ In the reference, the **[source]** link next to a name opens the code that defin
 
 ## Not written yet
 
-The bridge to the engine `civiqhub-selene` (the collective regimes, the vote matrix, co-clustering and consensus between opinion groups) and the articles of a Project are planned.
+The bridge to the engine `civiqhub-selene` (the collective regimes, the vote matrix, co-clustering and consensus between opinion groups) is planned, and so are the paragraphs of an article, the placement of the Proposals in them, and the citations between Proposals.

@@ -26,6 +26,8 @@ EXPECTED = [
     "AmendmentStatus",
     "ApiSource",
     "Argument",
+    "Article",
+    "ArticleVersion",
     "AuthenticationError",
     "CiviqHubError",
     "Client",
