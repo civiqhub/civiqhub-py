@@ -438,6 +438,79 @@ def citation_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
     return rows
 
 
+#: The rows of amendments that an old dataset adds: a creation, a removal and a pending
+#: change, none of which builds an Amendment. am-07, a REMOVE written from p-03, produced
+#: the revision p-02.r2.
+OLD_AMENDMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "pc-1",
+        "proposal_id": "p-02",
+        "item_type": "PENDING_CREATE",
+        "type": "CREATE",
+        "change_type": "CREATE",
+        "status": "ADOPTED",
+    },
+    {
+        "id": "pc-2",
+        "proposal_id": "p-01",
+        "item_type": "PENDING_REMOVE",
+        "type": "REMOVE",
+        "change_type": "REMOVE",
+        "status": "OPEN",
+    },
+    {
+        "id": "am-07",
+        "proposal_id": "p-03",
+        "type": "REMOVE",
+        "target_proposal_id": "p-02",
+        "status": "ADOPTED",
+    },
+)
+
+#: The marks of old_rows(), in the order of the sections and of the rows:
+#: (section, index, row id, key, value).
+OLD_MARKS: tuple[tuple[str, int, str, str, str], ...] = (
+    ("projects", 0, "budget-2027", "parent_project_id", "budget-2026"),
+    ("proposals", 2, "p-03", "parent_root_id", "p-00"),
+    ("amendments", 0, "am-04", "kind", "SYNC"),
+    ("amendments", 0, "am-04", "originating_project_id", "budget-2026"),
+    ("amendments", 1, "am-05", "status", "DRAFT"),
+    ("amendments", 3, "pc-1", "type", "CREATE"),
+    ("amendments", 3, "pc-1", "change_type", "CREATE"),
+    ("amendments", 3, "pc-1", "item_type", "PENDING_CREATE"),
+    ("amendments", 4, "pc-2", "type", "REMOVE"),
+    ("amendments", 4, "pc-2", "change_type", "REMOVE"),
+    ("amendments", 4, "pc-2", "item_type", "PENDING_REMOVE"),
+    ("amendments", 5, "am-07", "type", "REMOVE"),
+)
+
+
+def old_rows() -> dict[str, Any]:
+    """Return fresh reference rows of an old dataset, with the values the model deprecated.
+
+    The Project was forked from ``budget-2026``, and p-03 derives from ``p-00``. The
+    amendment am-04 is a cascade of kind ``SYNC`` from ``budget-2026``, and am-05 is a
+    ``DRAFT``. The rows of :data:`OLD_AMENDMENTS` follow. :data:`OLD_MARKS` lists what a
+    dataset marks.
+    """
+    rows = reference_rows()
+    rows["projects"][0]["parent_project_id"] = "budget-2026"
+    by_id = {row["id"]: row for row in rows["proposals"]}
+    by_id["p-03"]["parent_root_id"] = "p-00"
+    amendments = {row["id"]: row for row in rows["amendments"]}
+    amendments["am-04"].update(
+        kind="SYNC",
+        type="UPDATE",
+        item_type="PROPOSAL_AMENDMENT",
+        originating_project_id="budget-2026",
+    )
+    amendments["am-05"]["status"] = "DRAFT"
+    rows["amendments"].extend(dict(row) for row in OLD_AMENDMENTS)
+    revisions = {row["id"]: row for row in rows["revisions"]}
+    revisions["p-02.r2"]["amendment_id"] = "am-07"
+    return rows
+
+
 def api_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
     """Return the reference rows as a token of the Group g-1 reads them from the API.
 

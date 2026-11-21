@@ -63,6 +63,7 @@ from .synthetic import make_project, make_rows, make_truth
 from .values import (
     ActantKind,
     AmendmentStatus,
+    DeprecatedValue,
     Exposure,
     Participation,
     Position,
@@ -86,6 +87,7 @@ __all__ = [
     "CiviqHubError",
     "Client",
     "Dataset",
+    "DeprecatedValue",
     "Entity",
     "Exposure",
     "ExposureError",

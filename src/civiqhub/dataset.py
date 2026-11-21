@@ -20,6 +20,13 @@ A row of ``citations`` has the keys of a row of ``placements``: ``proposal_id``,
 ``article_id``, ``version_number``, ``paragraph_id`` and ``rank``. It is a Proposal cited
 in an article that is not its parent article.
 
+An old dataset can hold values that the Articles model deprecated: the status ``DRAFT``,
+the types ``CREATE`` and ``REMOVE``, the pending changes ``PENDING_CREATE`` and
+``PENDING_REMOVE``, the kind ``SYNC`` and the traces of forks. They are read without
+failing, and each one is marked by a :class:`~civiqhub.values.DeprecatedValue`, listed by
+:attr:`Dataset.deprecated`. A row of ``amendments`` that is a creation, a removal or a
+pending change is not a local change of a Proposal, so it builds no Amendment.
+
 :meth:`Dataset.save` writes the rows to a JSON file, and :meth:`Dataset.from_file` reopens
 it, with the same fingerprint.
 """
@@ -56,6 +63,7 @@ from .values import (
     SCORES,
     ActantKind,
     AmendmentStatus,
+    DeprecatedValue,
     Exposure,
     Participation,
     Position,
@@ -91,6 +99,26 @@ _SECTIONS = (
 
 # The sections that describe individuals; an aggregated dataset leaves them empty.
 _INDIVIDUAL = ("actants", "votes", "impressions")
+
+# The values that the Articles model deprecated (DY116, DY118, DY132, DY151, DY176), by
+# section and key, in lower case. ``None`` stands for any value: these keys were only
+# filled by a fork or an uplink. A dataset reads them without failing, and marks them.
+_DEPRECATED: dict[str, dict[str, frozenset[str] | None]] = {
+    "projects": {"parent_project_id": None},
+    "proposals": {"parent_root_id": None},
+    "amendments": {
+        "status": frozenset({"draft"}),
+        "type": frozenset({"create", "remove"}),
+        "change_type": frozenset({"create", "remove"}),
+        "item_type": frozenset({"pending_create", "pending_remove"}),
+        "kind": frozenset({"sync"}),
+        "originating_project_id": None,
+    },
+}
+
+# The keys of a row of amendments that make it a creation, a removal or a pending change
+# rather than a local change of a Proposal: such a row builds no Amendment (DY118).
+_NOT_A_LOCAL_CHANGE = ("type", "change_type", "item_type")
 
 # The keys that would bring personal data into a row of actants.
 _PERSONAL = ("name", "email", "handle", "username", "user_id", "first_name", "last_name")
@@ -145,6 +173,8 @@ class Dataset:
         "_citations_by_version",
         "_current_revisions",
         "_current_versions",
+        "_deprecated",
+        "_deprecated_by_entity",
         "_depths",
         "_exposure",
         "_groups",
@@ -195,6 +225,8 @@ class Dataset:
     _citations_by_version: dict[str, Listing[Citation]]
     _current_revisions: dict[str, Revision]
     _current_versions: dict[str, ArticleVersion]
+    _deprecated: tuple[DeprecatedValue, ...]
+    _deprecated_by_entity: dict[tuple[str, str], tuple[DeprecatedValue, ...]]
     _depths: dict[str, int]
     _exposure: Exposure
     _groups: Listing[Group]
@@ -260,6 +292,34 @@ class Dataset:
         self._build_actants(
             sections, has_votes="votes" in data, has_impressions="impressions" in data
         )
+        self._build_deprecated(sections)
+
+    def _build_deprecated(self, sections: Mapping[str, list[_Row]]) -> None:
+        # The rows are valid here: every row read below has a string id.
+        marks: list[DeprecatedValue] = []
+        by_entity: dict[tuple[str, str], list[DeprecatedValue]] = {}
+        for section, keys in _DEPRECATED.items():
+            for index, row in enumerate(sections[section]):
+                found = [
+                    DeprecatedValue(
+                        section=section, index=index, row_id=row["id"], key=key, value=row[key]
+                    )
+                    for key, values in keys.items()
+                    if _is_deprecated(row.get(key), values)
+                ]
+                if not found:
+                    continue
+                marks.extend(found)
+                if section == "projects":
+                    entity = ("project", row["id"])
+                elif section == "proposals":
+                    entity = ("proposal", row["id"])
+                else:
+                    entity = ("proposal", row["proposal_id"])
+                by_entity.setdefault(entity, []).extend(found)
+        _set = object.__setattr__
+        _set(self, "_deprecated", tuple(marks))
+        _set(self, "_deprecated_by_entity", {k: tuple(v) for k, v in by_entity.items()})
 
     def _build_groups(self, sections: Mapping[str, list[_Row]]) -> list[Project]:
         groups = [
@@ -609,6 +669,8 @@ class Dataset:
                     f"project of the dataset."
                 )
         known_proposals = {proposal.id for proposal in proposals}
+        # The rows that build no Amendment: a revision may still name one of them.
+        set_aside = {row["id"] for row in sections["amendments"] if not _is_local_change(row)}
         for proposal_id, (index, _row) in links.items():
             if proposal_id not in known_proposals:
                 raise ValidationError(
@@ -667,7 +729,11 @@ class Dataset:
         _check_amendments(amendments, links, by_proposal, project_of)
         by_row = {amendment.amendment_id: amendment for amendment in amendments}
         for revision in revisions:
-            if revision.amendment_id is not None and revision.amendment_id not in by_row:
+            if (
+                revision.amendment_id is not None
+                and revision.amendment_id not in by_row
+                and revision.amendment_id not in set_aside
+            ):
                 raise ValidationError(
                     f"The revision {revision.id!r} has the amendment_id "
                     f"{revision.amendment_id!r}, and no row of the section 'amendments' has "
@@ -1062,6 +1128,15 @@ class Dataset:
         return self._placements
 
     @property
+    def deprecated(self) -> tuple[DeprecatedValue, ...]:
+        """Every deprecated value read in the rows, in the order of the sections and rows.
+
+        It is empty for a dataset of the current model. See
+        :class:`~civiqhub.values.DeprecatedValue` for the values that are marked.
+        """
+        return self._deprecated
+
+    @property
     def citations(self) -> Listing[Citation]:
         """Every citation, in every article version: by version, then in the order of the
         text and of the ranks."""
@@ -1270,8 +1345,12 @@ class Dataset:
     def _amendments_in(self, project_id: str) -> Listing[Amendment]:
         return self._amendments_by_project.get(project_id, Listing())
 
-    def _amendment_by_row(self, amendment_id: str) -> Amendment:
-        return self._amendments_by_row[amendment_id]
+    def _amendment_by_row(self, amendment_id: str) -> Amendment | None:
+        # None for a row that builds no Amendment: a deprecated creation or removal.
+        return self._amendments_by_row.get(amendment_id)
+
+    def _deprecated_of(self, kind: str, id: str) -> tuple[DeprecatedValue, ...]:
+        return self._deprecated_by_entity.get((kind, id), ())
 
     def _arguments_of(self, proposal_id: str) -> Listing[Argument]:
         return self._arguments_by_proposal[proposal_id]
@@ -1612,6 +1691,8 @@ def _read_amendment_links(rows: list[_Row]) -> dict[str, tuple[int, _Row]]:
             )
         ids[id] = index
         proposal_id = _identifier(row, "proposal_id", f"amendments[{index}] (id {id!r})")
+        if not _is_local_change(row):
+            continue  # a deprecated creation, removal or pending change: no Amendment
         if proposal_id in links:
             raise ValidationError(
                 f"The rows amendments[{links[proposal_id][0]}] and amendments[{index}] are both "
@@ -1682,9 +1763,24 @@ def _check_amendments(
             current = by_id.get(current.target_id)
 
 
+def _is_deprecated(value: object, values: frozenset[str] | None) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    return values is None or value.lower() in values
+
+
+def _is_local_change(row: _Row) -> bool:
+    """Whether a row of amendments is a local change of a Proposal, the only Amendment."""
+    keys = _DEPRECATED["amendments"]
+    return not any(_is_deprecated(row.get(key), keys[key]) for key in _NOT_A_LOCAL_CHANGE)
+
+
 def _status(row: _Row, where: str) -> AmendmentStatus:
     value = row.get("status")
     if value is None:
+        return AmendmentStatus.OPEN
+    if _is_deprecated(value, _DEPRECATED["amendments"]["status"]):
+        # DRAFT, deprecated: not decided yet, as an open Amendment. Marked on reading.
         return AmendmentStatus.OPEN
     if isinstance(value, str) and value.lower() in {status.value for status in AmendmentStatus}:
         return AmendmentStatus(value.lower())

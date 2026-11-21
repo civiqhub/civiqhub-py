@@ -38,6 +38,7 @@ A vote is never inferred: an Actant who did not vote is "abstained" when the Rev
 | I want to | Use | Module |
 | --- | --- | --- |
 | Save what I loaded, and reopen it later | {py:meth}`Dataset.save <civiqhub.dataset.Dataset.save>`, {py:func}`civiqhub.load` | [`dataset`](reference/civiqhub.dataset.md), [`client`](reference/civiqhub.client.md) |
+| Read an old dataset, and find the values that the model deprecated (`DRAFT`, `SYNC`, forks...) | {py:attr}`Dataset.deprecated <civiqhub.dataset.Dataset.deprecated>`, {py:attr}`Proposal.deprecated <civiqhub.entities.Proposal.deprecated>`, {py:class}`civiqhub.DeprecatedValue` | [`dataset`](reference/civiqhub.dataset.md), [`values`](reference/civiqhub.values.md) |
 | Read rows held in memory | {py:class}`civiqhub.MemorySource` | [`sources`](reference/civiqhub.sources.md) |
 | Read a saved file through a client | {py:class}`civiqhub.FileSource` | [`sources`](reference/civiqhub.sources.md) |
 | Build a dataset from rows directly | {py:class}`civiqhub.Dataset` | [`dataset`](reference/civiqhub.dataset.md) |

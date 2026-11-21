@@ -101,7 +101,8 @@ def test_an_amendment_has_no_type() -> None:
     assert isinstance(Dataset(rows).proposals["p-04"], Amendment)
 
 
-@pytest.mark.parametrize("status", ["draft", "DRAFT", "pending", 1])
+# The deprecated status DRAFT is read and marked: see tests/test_deprecated.py.
+@pytest.mark.parametrize("status", ["pending", "closed", "", 1])
 def test_an_unknown_status_is_refused(status: object) -> None:
     rows = reference_rows()
     amendment_row(rows, "p-05")["status"] = status

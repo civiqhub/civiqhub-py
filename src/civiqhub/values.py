@@ -7,7 +7,8 @@
 The closed choices of the product are enumerations: :class:`Exposure`, :class:`Role`,
 :class:`ActantKind`, :class:`AmendmentStatus`, :class:`Position` and :class:`VoteState`.
 :class:`VoteCounts` holds the five vote counts of a Revision, and :class:`Participation`
-the counts of a Project.
+the counts of a Project. :class:`DeprecatedValue` marks a value of an old dataset that the
+model no longer has.
 
 Every value is frozen and hashable. The counts are raw: no mean, no entropy and no
 consensus label is computed from them.
@@ -23,6 +24,7 @@ __all__ = [
     "SCORES",
     "ActantKind",
     "AmendmentStatus",
+    "DeprecatedValue",
     "Exposure",
     "Participation",
     "Position",
@@ -78,7 +80,8 @@ class AmendmentStatus(StrEnum):
     """Where an Amendment stands.
 
     There is no draft status. Like any unknown value, ``AmendmentStatus("draft")`` raises
-    :class:`ValueError`.
+    :class:`ValueError`. A dataset reads the deprecated status ``DRAFT`` of an old row as
+    :attr:`OPEN`, and marks it with a :class:`DeprecatedValue`.
     """
 
     #: Not decided yet.
@@ -114,6 +117,52 @@ class VoteState(StrEnum):
     NOT_SHOWN = "not_shown"
     #: The Actant did not vote, and the dataset does not record what was shown.
     UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, kw_only=True)
+class DeprecatedValue:
+    """A value of an old dataset that the model no longer has, read and marked.
+
+    The Articles model deprecated the status ``DRAFT`` of an Amendment, the types
+    ``CREATE`` and ``REMOVE``, the pending changes ``PENDING_CREATE`` and
+    ``PENDING_REMOVE``, the kind ``SYNC`` of the cascades, and the traces of forks and
+    uplinks. The server no longer writes them, but old datasets and snapshots still hold
+    them. A dataset reads them without failing and marks each one with a
+    ``DeprecatedValue``, in :attr:`Dataset.deprecated <civiqhub.dataset.Dataset.deprecated>`
+    and on the Project or the Proposal that the row describes.
+
+    These are the values that a dataset marks, in any case:
+
+    - in ``projects``: any ``parent_project_id``, the Project that this one was forked
+      from;
+    - in ``proposals``: any ``parent_root_id``, the Proposal that this one derives from;
+    - in ``amendments``: the ``status`` ``DRAFT``, the ``type`` ``CREATE`` or ``REMOVE``,
+      the ``change_type`` ``CREATE`` or ``REMOVE``, the ``item_type`` ``PENDING_CREATE``
+      or ``PENDING_REMOVE``, the ``kind`` ``SYNC``, and any ``originating_project_id``.
+
+    The SDK never produces one of these values. A dataset keeps its rows as the source
+    gave them, so :meth:`Dataset.save <civiqhub.dataset.Dataset.save>` writes back what it
+    read, and adds none.
+
+    Args:
+        section: The section of the row, such as ``"amendments"``.
+        index: The position of the row in its section, from 0.
+        row_id: The id of the row.
+        key: The key of the value in the row.
+        value: The value, as the row gives it.
+    """
+
+    section: str
+    index: int
+    row_id: str
+    key: str
+    value: str
+
+    def __str__(self) -> str:
+        return (
+            f"{self.section}[{self.index}] (id {self.row_id!r}): the {self.key} "
+            f"{self.value!r} is deprecated"
+        )
 
 
 def _is_count(value: object) -> bool:

@@ -33,6 +33,7 @@ EXPECTED = [
     "CiviqHubError",
     "Client",
     "Dataset",
+    "DeprecatedValue",
     "Entity",
     "Exposure",
     "ExposureError",
