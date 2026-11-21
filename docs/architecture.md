@@ -19,7 +19,7 @@ flowchart TD
   client --> dataset["dataset<br>Dataset"]
   synthetic["synthetic<br>make_rows, make_truth, make_project"] --> client
   sources --> dataset
-  dataset --> entities["entities<br>Entity, Group, Project, Article, ArticleVersion,<br>Proposal, Amendment, Revision, Argument,<br>Actant, Member, Agent, Vote"]
+  dataset --> entities["entities<br>Entity, Group, Project, Article, ArticleVersion,<br>Paragraph, Placement, Proposal, Amendment,<br>Revision, Argument, Actant, Member, Agent, Vote"]
   entities --> values["values<br>Exposure, Role, ActantKind, AmendmentStatus,<br>Position, VoteState, VoteCounts, Participation"]
   entities --> listing["listing<br>Listing"]
   values --> errors["errors<br>CiviqHubError and its seven errors"]
@@ -37,11 +37,11 @@ flowchart TD
 | {py:mod}`civiqhub.client` | {py:class}`~civiqhub.Client`, {py:func}`~civiqhub.connect`, {py:func}`~civiqhub.load` | standard library |
 | {py:mod}`civiqhub.synthetic` | {py:func}`~civiqhub.make_rows`, {py:func}`~civiqhub.make_truth`, {py:func}`~civiqhub.make_project` | standard library (`random`, seeded) |
 
-Not written yet: the bridge to the engine, `civiqhub.analysis`; the paragraphs of an article, the placement of the Proposals and the citations, whose sections a dataset keeps as they are.
+Not written yet: the bridge to the engine, `civiqhub.analysis`; the citations between Proposals, whose section a dataset keeps as it is.
 
 ## The dataset
 
-A source gives rows: a dictionary that JSON can write, in the format {py:data}`civiqhub.dataset.FORMAT`, with one list of rows per section (`groups`, `projects`, `articles`, `article_versions`, `proposals`, `revisions`, `vote_counts`, `amendments`, `arguments`, and at the pseudonymised level `actants`, `votes`, `impressions`). A {py:class}`~civiqhub.Dataset` checks these rows once, when it is built, and gives a graph of frozen objects.
+A source gives rows: a dictionary that JSON can write, in the format {py:data}`civiqhub.dataset.FORMAT`, with one list of rows per section (`groups`, `projects`, `articles`, `article_versions`, `paragraphs`, `placements`, `proposals`, `revisions`, `vote_counts`, `amendments`, `arguments`, and at the pseudonymised level `actants`, `votes`, `impressions`). A {py:class}`~civiqhub.Dataset` checks these rows once, when it is built, and gives a graph of frozen objects.
 
 ```mermaid
 flowchart LR

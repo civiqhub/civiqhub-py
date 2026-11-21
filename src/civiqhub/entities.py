@@ -6,7 +6,8 @@
 
 :class:`Entity` is what every object of the product shares: a frozen value, known by its
 id, tied to the :class:`~civiqhub.dataset.Dataset` it comes from. :class:`Group`,
-:class:`Project`, :class:`Article` (with its :class:`ArticleVersion`), :class:`Proposal`,
+:class:`Project`, :class:`Article` (with its :class:`ArticleVersion`, its
+:class:`Paragraph` and the :class:`Placement` of its Proposals), :class:`Proposal`,
 :class:`Amendment`, :class:`Revision`, :class:`Argument`, :class:`Actant` (with
 :class:`Member` and :class:`Agent`) and :class:`Vote` are the objects of the product.
 
@@ -43,6 +44,8 @@ __all__ = [
     "Entity",
     "Group",
     "Member",
+    "Paragraph",
+    "Placement",
     "Project",
     "Proposal",
     "Revision",
@@ -299,6 +302,31 @@ class Article(Entity):
         """The version in force, the one numbered ``current_version_number``."""
         return self.dataset._current_version_of(self.id)
 
+    @property
+    def paragraphs(self) -> "Listing[Paragraph]":
+        """The top of the tree of paragraphs of the version in force.
+
+        These are the paragraphs that no other holds, in the order of the text. Each one
+        gives its :attr:`~Paragraph.children`. :meth:`walk_paragraphs` gives them all.
+        """
+        return self.current_version.paragraphs
+
+    def walk_paragraphs(self) -> "Iterator[Paragraph]":
+        """Walk every paragraph of the version in force, in the order of the text.
+
+        It is the tree read depth first: each paragraph, then the paragraphs it holds.
+        """
+        return self.current_version.walk_paragraphs()
+
+    @property
+    def proposals(self) -> "Listing[Proposal]":
+        """The Proposals placed in the version in force, in the order of the text.
+
+        A Proposal outside any paragraph comes first; then the Proposals of each
+        paragraph, in the order of the text and of their ranks.
+        """
+        return self.current_version.proposals
+
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
 class ArticleVersion(Entity):
@@ -342,6 +370,150 @@ class ArticleVersion(Entity):
         """Whether the version is the one in force for its article."""
         return self.dataset._current_version_of(self.article_id) is self
 
+    @property
+    def paragraphs(self) -> "Listing[Paragraph]":
+        """The top of the tree of paragraphs of the version, in the order of the text."""
+        return self.dataset._top_paragraphs_of(self.id)
+
+    def walk_paragraphs(self) -> "Iterator[Paragraph]":
+        """Walk every paragraph of the version, in the order of the text.
+
+        It is the tree read depth first: each paragraph, then the paragraphs it holds.
+        """
+        return iter(self.dataset._paragraphs_of(self.id))
+
+    @property
+    def placements(self) -> "Listing[Placement]":
+        """Where each Proposal sits in the version, in the order of the text and of ranks."""
+        return self.dataset._placements_of(self.id)
+
+    @property
+    def proposals(self) -> "Listing[Proposal]":
+        """The Proposals placed in the version, in the order of :attr:`placements`."""
+        return Listing(placement.proposal for placement in self.placements)
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Paragraph(Entity):
+    """A numbered division of an article version, made by a heading of level 1 to 4.
+
+    The paragraphs of a version form a tree: a paragraph holds the paragraphs of a deeper
+    level that follow it, up to the next paragraph of its level or of a higher one. The
+    rows give no parent: the tree comes from the levels, in the order of the text.
+
+    ``paragraph_id`` is the id that the source gives, never prefixed: the prefix
+    ``p-`` belongs to the anchors of the text, and is left out when a row carries it. The
+    same paragraph can keep its id from one version to the next, so the id of the entity
+    also names its version, such as ``art-1.v3#3f2a``.
+
+    ``repr`` shows its id and its number and title, such as
+    ``Paragraph('art-1.v3#8c1d', '1.1 Parks')``.
+
+    Args:
+        id: The id of the paragraph.
+        dataset: The dataset that the paragraph comes from.
+        article_id: The id of the article of the paragraph.
+        version_number: The number of the version of the paragraph.
+        paragraph_id: The id of the paragraph within its version, without prefix.
+        level: The level of its heading, from 1 to 4.
+        number: The number of the paragraph, such as ``"1.2"``, as the source gives it.
+        title: The title of the paragraph.
+        parent_id: The id of the paragraph that holds this one, or ``None`` at the top.
+    """
+
+    article_id: str
+    version_number: int = 1
+    paragraph_id: str
+    level: int = 1
+    number: str = ""
+    title: str = ""
+    parent_id: str | None = None
+
+    #: The name of a paragraph in messages.
+    noun: ClassVar[str] = "paragraph"
+
+    def _label(self) -> str:
+        return " ".join(part for part in (self.number, self.title) if part)
+
+    @property
+    def version(self) -> ArticleVersion:
+        """The article version of the paragraph."""
+        return self.dataset.article_versions[f"{self.article_id}.v{self.version_number}"]
+
+    @property
+    def article(self) -> Article:
+        """The article of the paragraph."""
+        return self.dataset.articles[self.article_id]
+
+    @property
+    def parent(self) -> "Paragraph | None":
+        """The paragraph that holds this one, or ``None`` at the top of the tree."""
+        return None if self.parent_id is None else self.dataset.paragraphs[self.parent_id]
+
+    @property
+    def children(self) -> "Listing[Paragraph]":
+        """The paragraphs that this one holds directly, in the order of the text."""
+        return self.dataset._children_of_paragraph(self.id)
+
+    @property
+    def placements(self) -> "Listing[Placement]":
+        """The placements in this paragraph, by rank."""
+        return self.dataset._placements_in_paragraph(self.id)
+
+    @property
+    def proposals(self) -> "Listing[Proposal]":
+        """The Proposals placed in this paragraph, by rank."""
+        return Listing(placement.proposal for placement in self.placements)
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Placement(Entity):
+    """Where a Proposal sits in a version of its parent article: a paragraph and a rank.
+
+    A Proposal is placed in its parent article only, and once per version; elsewhere it
+    appears as a citation. A Proposal written before the first heading of the text sits
+    outside any paragraph: its :attr:`paragraph` is ``None``. The id of a placement names
+    the Proposal and the version, such as ``p-01@art-1.v3``.
+
+    Args:
+        id: The id of the placement.
+        dataset: The dataset that the placement comes from.
+        proposal_id: The id of the placed Proposal.
+        article_id: The id of the article.
+        version_number: The number of the version of the article.
+        paragraph_id: The id of the paragraph within its version, without prefix, or
+            ``None`` outside any paragraph.
+        rank: The rank of the Proposal in its paragraph, as the source gives it: the
+            Proposals of a paragraph come by rank, then in the order of the rows.
+    """
+
+    proposal_id: str
+    article_id: str
+    version_number: int = 1
+    paragraph_id: str | None = None
+    rank: int = 0
+
+    #: The name of a placement in messages.
+    noun: ClassVar[str] = "placement"
+
+    @property
+    def proposal(self) -> "Proposal":
+        """The placed Proposal."""
+        return self.dataset.proposals[self.proposal_id]
+
+    @property
+    def version(self) -> ArticleVersion:
+        """The article version that the Proposal is placed in."""
+        return self.dataset.article_versions[f"{self.article_id}.v{self.version_number}"]
+
+    @property
+    def paragraph(self) -> Paragraph | None:
+        """The paragraph that the Proposal is placed in, or ``None`` outside any."""
+        if self.paragraph_id is None:
+            return None
+        key = f"{self.article_id}.v{self.version_number}#{self.paragraph_id}"
+        return self.dataset.paragraphs[key]
+
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
 class Proposal(Entity):
@@ -382,6 +554,32 @@ class Proposal(Entity):
     def project(self) -> Project:
         """The Project of the Proposal."""
         return self.dataset.projects[self.project_id]
+
+    @property
+    def article(self) -> Article | None:
+        """The parent article of the Proposal, or ``None`` for a Proposal of a Group.
+
+        Raises:
+            NotFoundError: The Proposal names a parent article that the dataset does not
+                hold, as when the source gives no articles.
+        """
+        return None if self.article_id is None else self.dataset.articles[self.article_id]
+
+    @property
+    def placement(self) -> Placement | None:
+        """Where the Proposal sits in the version in force of its parent article.
+
+        It is ``None`` for a Proposal of a Group, and when the source gives no placement
+        of the Proposal in that version.
+
+        Raises:
+            NotFoundError: The Proposal names a parent article that the dataset does not
+                hold.
+        """
+        article = self.article
+        if article is None:
+            return None
+        return self.dataset._placement_of(self.id, article.current_version.id)
 
     @property
     def revisions(self) -> "Listing[Revision]":
