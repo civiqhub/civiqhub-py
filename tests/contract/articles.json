@@ -1,0 +1,194 @@
+{
+ "generated_from": {
+  "version": "0.4.123",
+  "sha256": "faf27cd6b40959d03dc4c1092ee66d9949427e516d6e33f7e86ac1d037da196d"
+ },
+ "routes": {
+  "getArticleVersion": {
+   "method": "get",
+   "path": "/projects/{projectId}/articles/{articleId}/versions/{versionNumber}",
+   "path_parameters": [
+    "articleId",
+    "projectId",
+    "versionNumber"
+   ],
+   "query_parameters": {},
+   "answer": {
+    "schema": "ArticleVersionResponseDto"
+   }
+  },
+  "listArticleVersions": {
+   "method": "get",
+   "path": "/projects/{projectId}/articles/{articleId}/versions",
+   "path_parameters": [
+    "articleId",
+    "projectId"
+   ],
+   "query_parameters": {
+    "page": {
+     "type": "number",
+     "minimum": 1,
+     "maximum": 1000000000
+    },
+    "limit": {
+     "type": "number",
+     "minimum": 1,
+     "maximum": 50
+    }
+   },
+   "answer": {
+    "type": "object",
+    "required": [
+     "items",
+     "meta"
+    ],
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "schema": "ArticleVersionListItemDto"
+      }
+     },
+     "meta": {
+      "schema": "OffsetPaginationMeta"
+     }
+    }
+   }
+  },
+  "listProjectArticles": {
+   "method": "get",
+   "path": "/projects/{projectId}/articles",
+   "path_parameters": [
+    "projectId"
+   ],
+   "query_parameters": {
+    "page": {
+     "type": "number",
+     "minimum": 1,
+     "maximum": 1000000000
+    },
+    "limit": {
+     "type": "number",
+     "minimum": 1,
+     "maximum": 50
+    }
+   },
+   "answer": {
+    "type": "object",
+    "required": [
+     "items",
+     "meta"
+    ],
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "schema": "ArticleListItemDto"
+      }
+     },
+     "meta": {
+      "schema": "OffsetPaginationMeta"
+     }
+    }
+   }
+  }
+ },
+ "schemas": {
+  "ArticleListItemDto": {
+   "id": {
+    "type": "string",
+    "format": "uuid",
+    "required": true
+   }
+  },
+  "ArticleVersionListItemDto": {
+   "versionNumber": {
+    "type": "number",
+    "required": true
+   },
+   "publishedAt": {
+    "type": "string",
+    "format": "date-time",
+    "required": true
+   }
+  },
+  "ArticleVersionResponseDto": {
+   "title": {
+    "type": "string",
+    "required": true
+   },
+   "description": {
+    "type": "string",
+    "nullable": true,
+    "required": true
+   },
+   "body": {
+    "type": "string",
+    "required": true
+   },
+   "publishedAt": {
+    "type": "string",
+    "format": "date-time",
+    "required": true
+   },
+   "outline": {
+    "type": "array",
+    "items": {
+     "schema": "ArticleOutlineEntryDto"
+    },
+    "required": true
+   },
+   "proposalBlocks": {
+    "type": "array",
+    "items": {
+     "schema": "ArticleBodyProposalBlockDto"
+    },
+    "required": true
+   }
+  },
+  "ArticleOutlineEntryDto": {
+   "paragraphId": {
+    "type": "string",
+    "required": true
+   },
+   "level": {
+    "type": "number",
+    "required": true
+   },
+   "number": {
+    "type": "string",
+    "required": true
+   },
+   "title": {
+    "type": "string",
+    "required": true
+   }
+  },
+  "ArticleBodyProposalBlockDto": {
+   "proposalId": {
+    "type": "string",
+    "format": "uuid",
+    "required": true
+   },
+   "role": {
+    "type": "string",
+    "enum": [
+     "PARENT",
+     "CITATION"
+    ],
+    "required": true
+   },
+   "paragraphId": {
+    "type": "string",
+    "nullable": true,
+    "required": true
+   }
+  },
+  "OffsetPaginationMeta": {
+   "hasNextPage": {
+    "type": "boolean",
+    "required": true
+   }
+  }
+ }
+}
