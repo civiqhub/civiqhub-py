@@ -25,6 +25,9 @@ ticket of the model adds the sections it builds.
         arg-5        depth 1
         arg-6        depth 1
 
+    Articles, by position: art-1 (versions 1 to 3, the third in force), then art-2
+    (version 1). Their rows come in another order; see article_rows().
+
     At the pseudonymised level, four actants: the members m-001, m-002 and m-003, and
     the agent g-001. m-003 voted only on p-01.r1, the old revision of p-01; p-01.r2 was
     shown to m-003, who did not vote on it.
@@ -202,6 +205,37 @@ AUTHORS: dict[str, str] = {
 }
 
 
+# The articles of the reference Project. Their rows are not in the order of their
+# positions: the Project puts them in it. art-1 is in its third version.
+ARTICLES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "art-2",
+        "project_id": "budget-2027",
+        "position": 2,
+        "title": "Culture",
+        "current_version_number": 1,
+        "published_at": "2026-10-20T08:00:00Z",
+    },
+    {
+        "id": "art-1",
+        "project_id": "budget-2027",
+        "position": 1,
+        "title": "Green spaces",
+        "description": "Trees, parks and gardens.",
+        "current_version_number": 3,
+        "published_at": "2026-11-10T08:00:00Z",
+    },
+)
+
+# (article, number, title, body, published at). The rows of art-1 are not in order.
+ARTICLE_VERSIONS: tuple[tuple[str, int, str, str, str], ...] = (
+    ("art-1", 2, "Green spaces", "Second version on green spaces.", "2026-10-15T08:00:00Z"),
+    ("art-1", 1, "Parks", "First version on parks.", "2026-10-01T08:00:00Z"),
+    ("art-2", 1, "Culture", "First version on culture.", "2026-10-20T08:00:00Z"),
+    ("art-1", 3, "Green spaces", "Third version on green spaces.", "2026-11-10T08:00:00Z"),
+)
+
+
 def minimal_rows() -> dict[str, Any]:
     """Return fresh minimal rows: one Group, one Project and its participation."""
     return {
@@ -289,6 +323,27 @@ def pseudonymised_rows(*, impressions: bool = True) -> dict[str, Any]:
         rows["impressions"] = [
             {"actant": actant, "revision_id": revision_id} for actant, revision_id in IMPRESSIONS
         ]
+    return rows
+
+
+def article_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
+    """Return fresh reference rows with the articles of the Project and their versions.
+
+    Args:
+        pseudonymised: Whether the rows are at the pseudonymised level.
+    """
+    rows = pseudonymised_rows() if pseudonymised else reference_rows()
+    rows["articles"] = [dict(row) for row in ARTICLES]
+    rows["article_versions"] = [
+        {
+            "article_id": article_id,
+            "version_number": number,
+            "title": title,
+            "body": body,
+            "published_at": published_at,
+        }
+        for article_id, number, title, body, published_at in ARTICLE_VERSIONS
+    ]
     return rows
 
 

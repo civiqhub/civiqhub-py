@@ -9,13 +9,12 @@ can write, with an entry ``format``, an instant ``as_of``, a level of ``exposure
 list of rows per section. A missing section is an empty list, and a key that a row does
 not need is ignored.
 
-This version builds eleven sections: ``groups``, ``projects``, ``participation``,
-``proposals``, ``revisions``, ``vote_counts``, ``amendments``, ``arguments``, and, in a
-pseudonymised dataset only, ``actants``, ``votes`` and ``impressions``. The sections of the
-articles (``articles``, ``article_versions``, ``paragraphs``, ``placements`` and
-``citations``) are kept as they are. They count
-in the fingerprint and come back from :meth:`Dataset.to_dict`, but no object is built from
-them yet.
+This version builds thirteen sections: ``groups``, ``projects``, ``participation``,
+``articles``, ``article_versions``, ``proposals``, ``revisions``, ``vote_counts``,
+``amendments``, ``arguments``, and, in a pseudonymised dataset only, ``actants``, ``votes``
+and ``impressions``. The sections ``paragraphs``, ``placements`` and ``citations`` are kept
+as they are: they count in the fingerprint and come back from :meth:`Dataset.to_dict`, but
+no object is built from them yet.
 
 :meth:`Dataset.save` writes the rows to a JSON file, and :meth:`Dataset.from_file` reopens
 it, with the same fingerprint.
@@ -34,6 +33,8 @@ from .entities import (
     Agent,
     Amendment,
     Argument,
+    Article,
+    ArticleVersion,
     Entity,
     Group,
     Member,
@@ -126,9 +127,13 @@ class Dataset:
         "_arguments_by_author",
         "_arguments_by_project",
         "_arguments_by_proposal",
+        "_article_versions",
+        "_articles",
+        "_articles_by_project",
         "_as_of",
         "_children",
         "_current_revisions",
+        "_current_versions",
         "_depths",
         "_exposure",
         "_groups",
@@ -144,6 +149,7 @@ class Dataset:
         "_revisions_by_proposal",
         "_rows",
         "_source",
+        "_versions_by_article",
         "_vote_counts",
         "_votes",
         "_votes_by_actant",
@@ -160,9 +166,13 @@ class Dataset:
     _arguments_by_project: dict[str, Listing[Argument]]
     _arguments_by_author: dict[str, Listing[Argument]]
     _arguments_by_proposal: dict[str, Listing[Argument]]
+    _article_versions: Listing[ArticleVersion]
+    _articles: Listing[Article]
+    _articles_by_project: dict[str, Listing[Article]]
     _as_of: str
     _children: dict[str, Listing[Group]]
     _current_revisions: dict[str, Revision]
+    _current_versions: dict[str, ArticleVersion]
     _depths: dict[str, int]
     _exposure: Exposure
     _groups: Listing[Group]
@@ -178,6 +188,7 @@ class Dataset:
     _revisions_by_proposal: dict[str, Listing[Revision]]
     _rows: _Row
     _source: str
+    _versions_by_article: dict[str, Listing[ArticleVersion]]
     _vote_counts: dict[str, VoteCounts]
     _votes: Listing[Vote]
     _votes_by_actant: dict[str, Listing[Vote]]
@@ -211,6 +222,7 @@ class Dataset:
         _set(self, "_as_of", _read_as_of(data.get("as_of")))
         _set(self, "_exposure", exposure)
         projects = self._build_groups(sections)
+        self._build_articles(sections, projects)
         proposals = self._build_proposals(sections, projects)
         self._build_arguments(sections["arguments"], proposals)
         self._build_actants(
@@ -258,6 +270,81 @@ class Dataset:
         _set(self, "_projects_by_group", {key: Listing(items) for key, items in by_group.items()})
         _set(self, "_participation", _read_participation(sections["participation"], projects))
         return projects
+
+    def _build_articles(self, sections: Mapping[str, list[_Row]], projects: list[Project]) -> None:
+        articles = [
+            self._article(row, f"articles[{index}]")
+            for index, row in enumerate(sections["articles"])
+        ]
+        _check_unique(articles, "articles", ("id",))
+        known_projects = {project.id for project in projects}
+        positions: dict[tuple[str, int], int] = {}
+        for index, article in enumerate(articles):
+            if article.project_id not in known_projects:
+                raise ValidationError(
+                    f"The row articles[{index}] (id {article.id!r}) has the project_id "
+                    f"{article.project_id!r}, and no project has this id: project_id names a "
+                    f"project of the dataset."
+                )
+            key = (article.project_id, article.position)
+            if key in positions:
+                raise ValidationError(
+                    f"The rows articles[{positions[key]}] and articles[{index}] are both at the "
+                    f"position {article.position} of the project {article.project_id!r}: the "
+                    f"articles of a project have different positions."
+                )
+            positions[key] = index
+        rank = {article.id: index for index, article in enumerate(articles)}
+        versions = [
+            self._article_version(row, f"article_versions[{index}]")
+            for index, row in enumerate(sections["article_versions"])
+        ]
+        numbers: dict[tuple[str, int], int] = {}
+        for index, version in enumerate(versions):
+            if version.article_id not in rank:
+                raise ValidationError(
+                    f"The row article_versions[{index}] has the article_id "
+                    f"{version.article_id!r}, and no article has this id: article_id names an "
+                    f"article of the dataset."
+                )
+            key = (version.article_id, version.number)
+            if key in numbers:
+                raise ValidationError(
+                    f"The rows article_versions[{numbers[key]}] and article_versions[{index}] "
+                    f"are both the version number {version.number} of the article "
+                    f"{version.article_id!r}: the numbers of the versions of an article differ."
+                )
+            numbers[key] = index
+        versions.sort(key=lambda version: (rank[version.article_id], version.number))
+        by_article: dict[str, list[ArticleVersion]] = {}
+        for version in versions:
+            by_article.setdefault(version.article_id, []).append(version)
+        current: dict[str, ArticleVersion] = {}
+        for index, article in enumerate(articles):
+            found = next(
+                (
+                    version
+                    for version in by_article.get(article.id, [])
+                    if version.number == article.current_version_number
+                ),
+                None,
+            )
+            if found is None:
+                raise ValidationError(
+                    f"The row articles[{index}] (id {article.id!r}) has the "
+                    f"current_version_number {article.current_version_number}, and the article "
+                    f"has no version with this number in the section 'article_versions'."
+                )
+            current[article.id] = found
+        by_project: dict[str, list[Article]] = {}
+        for article in sorted(articles, key=lambda article: article.position):
+            by_project.setdefault(article.project_id, []).append(article)
+        _set = object.__setattr__
+        _set(self, "_articles", Listing(articles))
+        _set(self, "_article_versions", Listing(versions))
+        _set(self, "_articles_by_project", _freeze(by_project))
+        _set(self, "_versions_by_article", _freeze(by_article))
+        _set(self, "_current_versions", current)
 
     def _build_proposals(
         self, sections: Mapping[str, list[_Row]], projects: list[Project]
@@ -518,6 +605,33 @@ class Dataset:
         cls = {ActantKind.HUMAN: Member, ActantKind.AGENT: Agent}.get(kind, Actant)
         return cls(id=pseudonym, dataset=self, kind=kind, role=_role(row, where))
 
+    def _article(self, row: _Row, where: str) -> Article:
+        id = _identifier(row, "id", where)
+        where = f"{where} (id {id!r})"
+        return Article(
+            id=id,
+            dataset=self,
+            project_id=_identifier(row, "project_id", where),
+            position=_positive(row, "position", where),
+            title=_text(row, "title", where),
+            description=_text(row, "description", where),
+            current_version_number=_positive(row, "current_version_number", where),
+            published_at=_optional_text(row, "published_at", where),
+        )
+
+    def _article_version(self, row: _Row, where: str) -> ArticleVersion:
+        article_id = _identifier(row, "article_id", where)
+        number = _positive(row, "version_number", where)
+        return ArticleVersion(
+            id=f"{article_id}.v{number}",
+            dataset=self,
+            article_id=article_id,
+            number=number,
+            title=_text(row, "title", where),
+            body=_text(row, "body", where),
+            published_at=_optional_text(row, "published_at", where),
+        )
+
     def _group(self, row: _Row, where: str) -> Group:
         id = _identifier(row, "id", where)
         where = f"{where} (id {id!r})"
@@ -664,6 +778,17 @@ class Dataset:
     def projects(self) -> Listing[Project]:
         """Every Project of the dataset, in the order of the rows."""
         return self._projects
+
+    @property
+    def articles(self) -> Listing[Article]:
+        """Every article of the dataset, in the order of the rows."""
+        return self._articles
+
+    @property
+    def article_versions(self) -> Listing[ArticleVersion]:
+        """Every version of every article: by article, in the order of the rows, then by
+        number."""
+        return self._article_versions
 
     @property
     def proposals(self) -> Listing[Proposal]:
@@ -813,6 +938,15 @@ class Dataset:
 
     def _participation_of(self, project_id: str) -> Participation:
         return self._participation[project_id]
+
+    def _articles_in(self, project_id: str) -> Listing[Article]:
+        return self._articles_by_project.get(project_id, Listing())
+
+    def _versions_of(self, article_id: str) -> Listing[ArticleVersion]:
+        return self._versions_by_article.get(article_id, Listing())
+
+    def _current_version_of(self, article_id: str) -> ArticleVersion:
+        return self._current_versions[article_id]
 
     def _proposals_in(self, project_id: str) -> Listing[Proposal]:
         return self._proposals_by_project.get(project_id, Listing())
@@ -978,6 +1112,15 @@ def _number(row: _Row, where: str) -> int:
         raise ValidationError(
             f"The row {where} has the number {value!r}: the number of a revision is a "
             f"positive integer."
+        )
+    return value
+
+
+def _positive(row: _Row, key: str, where: str) -> int:
+    value = row.get(key)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise ValidationError(
+            f"The row {where} has no valid {key!r}: it is a positive integer; got {value!r}."
         )
     return value
 

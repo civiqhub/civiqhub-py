@@ -26,7 +26,8 @@ from support import (
     reference_rows,
 )
 
-RESERVED = ("articles", "article_versions", "paragraphs", "placements", "citations")
+# The sections that this version keeps without building objects from them.
+RESERVED = ("paragraphs", "placements", "citations")
 
 
 def with_second_project(rows: dict[str, Any]) -> dict[str, Any]:
