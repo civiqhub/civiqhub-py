@@ -58,7 +58,7 @@ Why frozen:
 - **No hidden reading.** Navigating from a Proposal to its Revisions, its Amendments or its votes reads indexes built once. It never calls the network, so it never fails halfway and never costs a request.
 - **Reproducible.** {py:meth}`~civiqhub.dataset.Dataset.fingerprint` identifies the rows: the same rows give the same fingerprint on every system. {py:meth}`~civiqhub.dataset.Dataset.save` writes them to a file that reopens with the same fingerprint, so that a result can be computed again on the same data.
 
-A rule that the rows break raises {py:class}`~civiqhub.ValidationError`, whose message names the row and the rule. To see newer data, load again: {py:meth}`Client.refresh <civiqhub.client.Client.refresh>` forgets what a client kept, and the objects already given stay valid in their own dataset.
+A rule that the rows break raises {py:class}`~civiqhub.ValidationError`, whose message names the row and the rule. A value that the model deprecated does not break a rule: an old dataset that holds the status `DRAFT`, the types `CREATE` and `REMOVE`, the pending changes, the kind `SYNC` or the traces of a fork loads, and {py:attr}`~civiqhub.dataset.Dataset.deprecated` marks each of these values. The SDK never produces one. To see newer data, load again: {py:meth}`Client.refresh <civiqhub.client.Client.refresh>` forgets what a client kept, and the objects already given stay valid in their own dataset.
 
 ## Three states of a vote
 
@@ -146,5 +146,6 @@ spreadsheet budget.ods aggregated
 | placement | Where a Proposal sits in its parent article: a paragraph and a rank |
 | citation | A Proposal shown in the text of an article that is not its parent article |
 | impression | The fact that a Revision was shown to an Actant |
+| deprecated value | A value of an old dataset that the model no longer has, read and marked, never produced |
 | vote state | Where an Actant stands on a Revision: voted, abstained, not shown or unknown |
 | fingerprint | 16 hexadecimal characters of a SHA-256 of the rows; the same rows give the same fingerprint |

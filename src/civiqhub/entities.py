@@ -24,6 +24,7 @@ from .listing import Listing
 from .values import (
     ActantKind,
     AmendmentStatus,
+    DeprecatedValue,
     Exposure,
     Participation,
     Position,
@@ -222,6 +223,15 @@ class Project(Entity):
         :attr:`citations`.
         """
         return [(citation.article_id, citation.proposal_id) for citation in self.citations]
+
+    @property
+    def deprecated(self) -> tuple[DeprecatedValue, ...]:
+        """The deprecated values read in the row of the Project, such as the trace of a fork.
+
+        It is empty for a Project of the current model. See
+        :class:`~civiqhub.values.DeprecatedValue`.
+        """
+        return self.dataset._deprecated_of("project", self.id)
 
     @property
     def proposals(self) -> "Listing[Proposal]":
@@ -696,6 +706,17 @@ class Proposal(Entity):
         return self.dataset._citations_of(self.id)
 
     @property
+    def deprecated(self) -> tuple[DeprecatedValue, ...]:
+        """The deprecated values read in the rows of this Proposal.
+
+        They come from its row of ``proposals``, then from the rows of ``amendments`` for
+        it: the status ``DRAFT`` or the kind ``SYNC`` of an Amendment, or a creation, a
+        removal or a pending change, which builds no Amendment. It is empty for a Proposal
+        of the current model. See :class:`~civiqhub.values.DeprecatedValue`.
+        """
+        return self.dataset._deprecated_of("proposal", self.id)
+
+    @property
     def revisions(self) -> "Listing[Revision]":
         """The Revisions of the Proposal, by increasing number."""
         return self.dataset._revisions_of(self.id)
@@ -814,7 +835,12 @@ class Revision(Entity):
 
     @property
     def amendment(self) -> "Amendment | None":
-        """The Amendment whose adoption produced this Revision, or ``None``."""
+        """The Amendment whose adoption produced this Revision, or ``None``.
+
+        It is also ``None`` when ``amendment_id`` names a row of ``amendments`` that builds
+        no Amendment: a deprecated creation or removal, marked in
+        :attr:`Dataset.deprecated <civiqhub.dataset.Dataset.deprecated>`.
+        """
         if self.amendment_id is None:
             return None
         return self.dataset._amendment_by_row(self.amendment_id)
@@ -837,6 +863,10 @@ class Amendment(Proposal):
     An Amendment has its own Revisions, votes and vote counts, as every Proposal. Once
     adopted, it produces a new Revision of the Proposal it targets. Only the local change
     of a Proposal exists: an Amendment has no type.
+
+    An old row can hold the deprecated status ``DRAFT``, read as ``OPEN``, or the
+    deprecated kind ``SYNC`` of a cascade. The Amendment is built, and
+    :attr:`~Proposal.deprecated` marks these values.
 
     Args:
         id: The id of the Proposal that is an Amendment.
