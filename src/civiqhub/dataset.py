@@ -9,12 +9,12 @@ can write, with an entry ``format``, an instant ``as_of``, a level of ``exposure
 list of rows per section. A missing section is an empty list, and a key that a row does
 not need is ignored.
 
-This version builds thirteen sections: ``groups``, ``projects``, ``participation``,
-``articles``, ``article_versions``, ``proposals``, ``revisions``, ``vote_counts``,
-``amendments``, ``arguments``, and, in a pseudonymised dataset only, ``actants``, ``votes``
-and ``impressions``. The sections ``paragraphs``, ``placements`` and ``citations`` are kept
-as they are: they count in the fingerprint and come back from :meth:`Dataset.to_dict`, but
-no object is built from them yet.
+This version builds fifteen sections: ``groups``, ``projects``, ``participation``,
+``articles``, ``article_versions``, ``paragraphs``, ``placements``, ``proposals``,
+``revisions``, ``vote_counts``, ``amendments``, ``arguments``, and, in a pseudonymised
+dataset only, ``actants``, ``votes`` and ``impressions``. The section ``citations`` is kept
+as it is: it counts in the fingerprint and comes back from :meth:`Dataset.to_dict`, but no
+object is built from it yet.
 
 :meth:`Dataset.save` writes the rows to a JSON file, and :meth:`Dataset.from_file` reopens
 it, with the same fingerprint.
@@ -38,6 +38,8 @@ from .entities import (
     Entity,
     Group,
     Member,
+    Paragraph,
+    Placement,
     Project,
     Proposal,
     Revision,
@@ -132,13 +134,20 @@ class Dataset:
         "_articles_by_project",
         "_as_of",
         "_children",
+        "_children_by_paragraph",
         "_current_revisions",
         "_current_versions",
         "_depths",
         "_exposure",
         "_groups",
         "_impressions",
+        "_paragraphs",
+        "_paragraphs_by_version",
         "_participation",
+        "_placement_by_pair",
+        "_placements",
+        "_placements_by_paragraph",
+        "_placements_by_version",
         "_projects",
         "_projects_by_group",
         "_proposals",
@@ -149,6 +158,7 @@ class Dataset:
         "_revisions_by_proposal",
         "_rows",
         "_source",
+        "_top_paragraphs",
         "_versions_by_article",
         "_vote_counts",
         "_votes",
@@ -171,12 +181,20 @@ class Dataset:
     _articles_by_project: dict[str, Listing[Article]]
     _as_of: str
     _children: dict[str, Listing[Group]]
+    _children_by_paragraph: dict[str, Listing[Paragraph]]
     _current_revisions: dict[str, Revision]
     _current_versions: dict[str, ArticleVersion]
     _depths: dict[str, int]
     _exposure: Exposure
     _groups: Listing[Group]
     _impressions: frozenset[tuple[str, str]] | None
+    _paragraphs: Listing[Paragraph]
+    _paragraphs_by_version: dict[str, Listing[Paragraph]]
+    _placement_by_pair: dict[tuple[str, str], Placement]
+    _placements: Listing[Placement]
+    _placements_by_paragraph: dict[str, Listing[Placement]]
+    _placements_by_version: dict[str, Listing[Placement]]
+    _top_paragraphs: dict[str, Listing[Paragraph]]
     _participation: dict[str, Participation]
     _projects: Listing[Project]
     _projects_by_group: dict[str, Listing[Project]]
@@ -223,7 +241,9 @@ class Dataset:
         _set(self, "_exposure", exposure)
         projects = self._build_groups(sections)
         self._build_articles(sections, projects)
+        self._build_paragraphs(sections["paragraphs"])
         proposals = self._build_proposals(sections, projects)
+        self._build_placements(sections["placements"])
         self._build_arguments(sections["arguments"], proposals)
         self._build_actants(
             sections, has_votes="votes" in data, has_impressions="impressions" in data
@@ -345,6 +365,152 @@ class Dataset:
         _set(self, "_articles_by_project", _freeze(by_project))
         _set(self, "_versions_by_article", _freeze(by_article))
         _set(self, "_current_versions", current)
+
+    def _build_paragraphs(self, rows: list[_Row]) -> None:
+        versions = {version.id for version in self._article_versions}
+        paragraphs = [
+            self._paragraph(row, f"paragraphs[{index}]") for index, row in enumerate(rows)
+        ]
+        seen: dict[str, int] = {}
+        by_version: dict[str, list[Paragraph]] = {}
+        for index, paragraph in enumerate(paragraphs):
+            version_id = f"{paragraph.article_id}.v{paragraph.version_number}"
+            if version_id not in versions:
+                raise ValidationError(
+                    f"The row paragraphs[{index}] is in the version {paragraph.version_number} "
+                    f"of the article {paragraph.article_id!r}, and the dataset has no such "
+                    f"version: article_id and version_number name a row of 'article_versions'."
+                )
+            if paragraph.id in seen:
+                raise ValidationError(
+                    f"The rows paragraphs[{seen[paragraph.id]}] and paragraphs[{index}] are both "
+                    f"the paragraph {paragraph.paragraph_id!r} of the version "
+                    f"{paragraph.version_number} of the article {paragraph.article_id!r}: a "
+                    f"paragraph id appears once in a version."
+                )
+            seen[paragraph.id] = index
+            by_version.setdefault(version_id, []).append(paragraph)
+        # The rows give no parent: a paragraph is held by the nearest paragraph before it,
+        # in the order of the text, whose level is lower.
+        tree: list[Paragraph] = []
+        for version_id in (version.id for version in self._article_versions):
+            held: list[Paragraph] = []
+            for paragraph in by_version.get(version_id, []):
+                while held and held[-1].level >= paragraph.level:
+                    held.pop()
+                parent_id = held[-1].id if held else None
+                placed = Paragraph(
+                    id=paragraph.id,
+                    dataset=self,
+                    article_id=paragraph.article_id,
+                    version_number=paragraph.version_number,
+                    paragraph_id=paragraph.paragraph_id,
+                    level=paragraph.level,
+                    number=paragraph.number,
+                    title=paragraph.title,
+                    parent_id=parent_id,
+                )
+                tree.append(placed)
+                held.append(placed)
+        own: dict[str, list[Paragraph]] = {}
+        top: dict[str, list[Paragraph]] = {}
+        children: dict[str, list[Paragraph]] = {}
+        for paragraph in tree:
+            version_id = f"{paragraph.article_id}.v{paragraph.version_number}"
+            own.setdefault(version_id, []).append(paragraph)
+            if paragraph.parent_id is None:
+                top.setdefault(version_id, []).append(paragraph)
+            else:
+                children.setdefault(paragraph.parent_id, []).append(paragraph)
+        _set = object.__setattr__
+        _set(self, "_paragraphs", Listing(tree))
+        _set(self, "_paragraphs_by_version", _freeze(own))
+        _set(self, "_top_paragraphs", _freeze(top))
+        _set(self, "_children_by_paragraph", _freeze(children))
+
+    def _build_placements(self, rows: list[_Row]) -> None:
+        order = {paragraph.id: index for index, paragraph in enumerate(self._paragraphs)}
+        versions = {version.id: index for index, version in enumerate(self._article_versions)}
+        placements: list[tuple[tuple[int, int, int, int], Placement]] = []
+        seen: dict[str, int] = {}
+        for index, row in enumerate(rows):
+            where = f"placements[{index}]"
+            proposal_id = _identifier(row, "proposal_id", where)
+            article_id = _identifier(row, "article_id", where)
+            version_number = _positive(row, "version_number", where)
+            paragraph_id = None if row.get("paragraph_id") is None else _paragraph_id(row, where)
+            rank = _rank(row, where)
+            proposal = self._proposals.get(proposal_id)
+            if proposal is None:
+                raise ValidationError(
+                    f"The row {where} has the proposal_id {proposal_id!r}, and no proposal has "
+                    f"this id: proposal_id names a proposal of the dataset."
+                )
+            version_id = f"{article_id}.v{version_number}"
+            if self._article_versions.get(version_id) is None:
+                raise ValidationError(
+                    f"The row {where} places the proposal {proposal_id!r} in the version "
+                    f"{version_number} of the article {article_id!r}, and the dataset has no "
+                    f"such version."
+                )
+            if proposal.article_id != article_id:
+                raise ValidationError(
+                    f"The row {where} places the proposal {proposal_id!r} in the article "
+                    f"{article_id!r}, and its parent article is {proposal.article_id!r}: a "
+                    f"proposal is placed in its parent article only; elsewhere it appears as a "
+                    f"citation."
+                )
+            key = None if paragraph_id is None else f"{version_id}#{paragraph_id}"
+            if key is not None and key not in order:
+                raise ValidationError(
+                    f"The row {where} places the proposal {proposal_id!r} in the paragraph "
+                    f"{paragraph_id!r} of the version {version_number} of the article "
+                    f"{article_id!r}, and this version has no such paragraph."
+                )
+            placement = Placement(
+                id=f"{proposal_id}@{version_id}",
+                dataset=self,
+                proposal_id=proposal_id,
+                article_id=article_id,
+                version_number=version_number,
+                paragraph_id=paragraph_id,
+                rank=rank,
+            )
+            if placement.id in seen:
+                raise ValidationError(
+                    f"The rows placements[{seen[placement.id]}] and {where} both place the "
+                    f"proposal {proposal_id!r} in the version {version_number} of the article "
+                    f"{article_id!r}: a proposal appears once in an article."
+                )
+            seen[placement.id] = index
+            # By version; in a version, outside any paragraph first, then in the order of
+            # the text, then by rank, then in the order of the rows.
+            position = -1 if key is None else order[key]
+            placements.append(((versions[version_id], position, rank, index), placement))
+        placements.sort(key=lambda pair: pair[0])
+        ordered = [placement for _, placement in placements]
+        by_version: dict[str, list[Placement]] = {}
+        by_paragraph: dict[str, list[Placement]] = {}
+        for placement in ordered:
+            version_id = f"{placement.article_id}.v{placement.version_number}"
+            by_version.setdefault(version_id, []).append(placement)
+            if placement.paragraph_id is not None:
+                key = f"{version_id}#{placement.paragraph_id}"
+                by_paragraph.setdefault(key, []).append(placement)
+        _set = object.__setattr__
+        _set(self, "_placements", Listing(ordered))
+        _set(self, "_placements_by_version", _freeze(by_version))
+        _set(self, "_placements_by_paragraph", _freeze(by_paragraph))
+        _set(
+            self,
+            "_placement_by_pair",
+            {
+                (placement.proposal_id, f"{placement.article_id}.v{placement.version_number}"): (
+                    placement
+                )
+                for placement in ordered
+            },
+        )
 
     def _build_proposals(
         self, sections: Mapping[str, list[_Row]], projects: list[Project]
@@ -632,6 +798,21 @@ class Dataset:
             published_at=_optional_text(row, "published_at", where),
         )
 
+    def _paragraph(self, row: _Row, where: str) -> Paragraph:
+        article_id = _identifier(row, "article_id", where)
+        version_number = _positive(row, "version_number", where)
+        paragraph_id = _paragraph_id(row, where)
+        return Paragraph(
+            id=f"{article_id}.v{version_number}#{paragraph_id}",
+            dataset=self,
+            article_id=article_id,
+            version_number=version_number,
+            paragraph_id=paragraph_id,
+            level=_heading_level(row, where),
+            number=_paragraph_number(row, where),
+            title=_text(row, "title", where),
+        )
+
     def _group(self, row: _Row, where: str) -> Group:
         id = _identifier(row, "id", where)
         where = f"{where} (id {id!r})"
@@ -791,6 +972,17 @@ class Dataset:
         return self._article_versions
 
     @property
+    def paragraphs(self) -> Listing[Paragraph]:
+        """Every paragraph of every article version: by version, in the order of the text."""
+        return self._paragraphs
+
+    @property
+    def placements(self) -> Listing[Placement]:
+        """Every placement of a Proposal: by version, then in the order of the text and of
+        the ranks."""
+        return self._placements
+
+    @property
     def proposals(self) -> Listing[Proposal]:
         """Every Proposal of the dataset, in the order of the rows."""
         return self._proposals
@@ -947,6 +1139,24 @@ class Dataset:
 
     def _current_version_of(self, article_id: str) -> ArticleVersion:
         return self._current_versions[article_id]
+
+    def _paragraphs_of(self, version_id: str) -> Listing[Paragraph]:
+        return self._paragraphs_by_version.get(version_id, Listing())
+
+    def _top_paragraphs_of(self, version_id: str) -> Listing[Paragraph]:
+        return self._top_paragraphs.get(version_id, Listing())
+
+    def _children_of_paragraph(self, paragraph_id: str) -> Listing[Paragraph]:
+        return self._children_by_paragraph.get(paragraph_id, Listing())
+
+    def _placements_of(self, version_id: str) -> Listing[Placement]:
+        return self._placements_by_version.get(version_id, Listing())
+
+    def _placements_in_paragraph(self, paragraph_id: str) -> Listing[Placement]:
+        return self._placements_by_paragraph.get(paragraph_id, Listing())
+
+    def _placement_of(self, proposal_id: str, version_id: str) -> Placement | None:
+        return self._placement_by_pair.get((proposal_id, version_id))
 
     def _proposals_in(self, project_id: str) -> Listing[Proposal]:
         return self._proposals_by_project.get(project_id, Listing())
@@ -1112,6 +1322,52 @@ def _number(row: _Row, where: str) -> int:
         raise ValidationError(
             f"The row {where} has the number {value!r}: the number of a revision is a "
             f"positive integer."
+        )
+    return value
+
+
+# The prefix of a paragraph id in the anchors of the text; the API never carries it.
+_ANCHOR = "p-"
+
+
+def _paragraph_id(row: _Row, where: str) -> str:
+    value = _identifier(row, "paragraph_id", where)
+    paragraph_id = value.removeprefix(_ANCHOR)
+    if not paragraph_id:
+        raise ValidationError(
+            f"The row {where} has the paragraph_id {value!r}: once the prefix {_ANCHOR!r} of "
+            f"the anchors is left out, nothing remains."
+        )
+    return paragraph_id
+
+
+def _heading_level(row: _Row, where: str) -> int:
+    value = row.get("level")
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 4:
+        return value
+    raise ValidationError(
+        f"The row {where} has the level {value!r}: the level of a paragraph is an integer "
+        f"from 1 to 4, the level of its heading."
+    )
+
+
+def _paragraph_number(row: _Row, where: str) -> str:
+    value = row.get("number")
+    if value is None:
+        return ""
+    if isinstance(value, bool) or not isinstance(value, str | int):
+        raise ValidationError(
+            f"The row {where} has the number {value!r}: the number of a paragraph is a text, "
+            f"such as '1.2', or an integer."
+        )
+    return str(value)
+
+
+def _rank(row: _Row, where: str) -> int:
+    value = row.get("rank")
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValidationError(
+            f"The row {where} has no valid 'rank': it is an integer, zero or more; got {value!r}."
         )
     return value
 

@@ -27,6 +27,8 @@ ticket of the model adds the sections it builds.
 
     Articles, by position: art-1 (versions 1 to 3, the third in force), then art-2
     (version 1). Their rows come in another order; see article_rows().
+    The current version of art-1 has five paragraphs, in two levels of headings and
+    three; p-01 and p-02 are placed in its paragraph 1.1. See paragraph_rows().
 
     At the pseudonymised level, four actants: the members m-001, m-002 and m-003, and
     the agent g-001. m-003 voted only on p-01.r1, the old revision of p-01; p-01.r2 was
@@ -236,6 +238,30 @@ ARTICLE_VERSIONS: tuple[tuple[str, int, str, str, str], ...] = (
 )
 
 
+# (article, version, paragraph id, level, number, title), in the order of the text of each
+# version. In version 2 of art-1, one id carries the prefix of the anchors, which is left
+# out when it is read; art-2 gives its number as an integer.
+PARAGRAPHS: tuple[tuple[str, int, str, int, str | int, str], ...] = (
+    ("art-1", 3, "3f2a", 1, "1", "Trees"),
+    ("art-1", 3, "8c1d", 2, "1.1", "Parks"),
+    ("art-1", 3, "9e0b", 2, "1.2", "Streets"),
+    ("art-1", 3, "a7c4", 3, "1.2.1", "Avenues"),
+    ("art-1", 3, "b5d2", 1, "2", "Water"),
+    ("art-2", 1, "c0f1", 1, 1, "Culture"),
+    ("art-1", 2, "3f2a", 1, "1", "Trees"),
+    ("art-1", 2, "p-8c1d", 2, "1.1", "Parks"),
+)
+
+# (proposal, article, version, paragraph id or None outside any, rank). p-03 and the
+# Amendments have no parent article: they are not placed.
+PLACEMENTS: tuple[tuple[str, str, int, str | None, int], ...] = (
+    ("p-01", "art-1", 3, "8c1d", 1),
+    ("p-02", "art-1", 3, "8c1d", 0),
+    ("p-01", "art-1", 2, "p-8c1d", 0),
+    ("p-02", "art-1", 2, None, 0),
+)
+
+
 def minimal_rows() -> dict[str, Any]:
     """Return fresh minimal rows: one Group, one Project and its participation."""
     return {
@@ -343,6 +369,37 @@ def article_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
             "published_at": published_at,
         }
         for article_id, number, title, body, published_at in ARTICLE_VERSIONS
+    ]
+    return rows
+
+
+def paragraph_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
+    """Return fresh article rows with the paragraphs of the versions and the placements.
+
+    Args:
+        pseudonymised: Whether the rows are at the pseudonymised level.
+    """
+    rows = article_rows(pseudonymised=pseudonymised)
+    rows["paragraphs"] = [
+        {
+            "article_id": article_id,
+            "version_number": version_number,
+            "paragraph_id": paragraph_id,
+            "level": level,
+            "number": number,
+            "title": title,
+        }
+        for article_id, version_number, paragraph_id, level, number, title in PARAGRAPHS
+    ]
+    rows["placements"] = [
+        {
+            "proposal_id": proposal_id,
+            "article_id": article_id,
+            "version_number": version_number,
+            "rank": rank,
+            **({"paragraph_id": paragraph_id} if paragraph_id is not None else {}),
+        }
+        for proposal_id, article_id, version_number, paragraph_id, rank in PLACEMENTS
     ]
     return rows
 
