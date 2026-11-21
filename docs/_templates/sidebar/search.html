@@ -1,0 +1,18 @@
+{# This Source Code Form is subject to the terms of the Mozilla Public
+   License, v. 2.0. If a copy of the MPL was not distributed with this
+   file, You can obtain one at https://mozilla.org/MPL/2.0/. #}
+<form class="sidebar-search-container" method="get" action="{{ pathto('search') }}" role="search">
+  <div class="civiqhub-search">
+    <span class="civiqhub-search-icon" aria-hidden="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="M20 20l-3.5-3.5"></path>
+      </svg>
+    </span>
+    <input class="sidebar-search" id="civiqhub-search-input" placeholder="Rechercher..." name="q" aria-label="Rechercher..." autocomplete="off">
+    <span class="civiqhub-search-keys" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+  </div>
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div>

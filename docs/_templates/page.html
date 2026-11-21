@@ -1,0 +1,28 @@
+{# This Source Code Form is subject to the terms of the Mozilla Public
+   License, v. 2.0. If a copy of the MPL was not distributed with this
+   file, You can obtain one at https://mozilla.org/MPL/2.0/. #}
+{% extends "!page.html" %}
+
+{#- force-light.js must run in the head, before Furo reads localStorage. -#}
+{% block extrahead %}
+{{ super() }}
+<script src="{{ pathto('_static/force-light.js', 1) }}"></script>
+{% endblock extrahead %}
+
+{% block content %}
+{% if pagename == master_doc %}
+<div class="civiqhub-home">
+{{ body }}
+</div>
+{% else %}
+<nav class="civiqhub-breadcrumb" aria-label="Fil d'Ariane">
+  <ol>
+    <li><a href="{{ pathto(master_doc) }}">Accueil</a></li>
+    {%- for parent in parents %}
+    <li><a href="{{ parent.link }}">{{ parent.title }}</a></li>
+    {%- endfor %}
+  </ol>
+</nav>
+{{ body }}
+{% endif %}
+{% endblock content %}

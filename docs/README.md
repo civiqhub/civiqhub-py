@@ -25,6 +25,10 @@ This builds the documentation of the code you have, as one site without versions
 | `conf.py` | The configuration of Sphinx |
 | `_ext/civiqhub_docs.py` | A local Sphinx extension; its docstring says what it does |
 | `_templates/sidebar/version-switcher.html`, `_static/version-switcher.js`, `_static/version-switcher.css` | The version selector of the sidebar |
+| `_templates/sidebar/brand.html`, `_templates/sidebar/search.html`, `_templates/page.html` | The mark of the site, the search field, and the forced light theme |
+| `_static/civiqhub.css`, `_static/force-light.js`, `_static/search-shortcut.js` | The CiviqHub theme, the light-only lock, and the Ctrl K shortcut |
+| `_static/fonts/` | Bricolage Grotesque (OFL 1.1) and `OFL.txt` |
+| `_static/logo.svg`, `_static/favicon.ico` | The CiviqHub glyph and the favicon |
 | `index.md` | The home page and the table of contents of the site |
 | `getting-started.md`, `library-map.md`, `architecture.md` | The guide: a first Project, the name to use for each need, how the SDK is built |
 | `snippets.md` | The code of each use, in eight lines; `tests/test_snippets.py` runs it against a fake API |
