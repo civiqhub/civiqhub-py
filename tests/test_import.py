@@ -29,6 +29,7 @@ EXPECTED = [
     "Article",
     "ArticleVersion",
     "AuthenticationError",
+    "Citation",
     "CiviqHubError",
     "Client",
     "Dataset",

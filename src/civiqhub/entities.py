@@ -7,7 +7,8 @@
 :class:`Entity` is what every object of the product shares: a frozen value, known by its
 id, tied to the :class:`~civiqhub.dataset.Dataset` it comes from. :class:`Group`,
 :class:`Project`, :class:`Article` (with its :class:`ArticleVersion`, its
-:class:`Paragraph` and the :class:`Placement` of its Proposals), :class:`Proposal`,
+:class:`Paragraph`, the :class:`Placement` of its Proposals and its :class:`Citation` of
+other Proposals), :class:`Proposal`,
 :class:`Amendment`, :class:`Revision`, :class:`Argument`, :class:`Actant` (with
 :class:`Member` and :class:`Agent`) and :class:`Vote` are the objects of the product.
 
@@ -41,6 +42,7 @@ __all__ = [
     "Argument",
     "Article",
     "ArticleVersion",
+    "Citation",
     "Entity",
     "Group",
     "Member",
@@ -204,6 +206,24 @@ class Project(Entity):
         return self.dataset._articles_in(self.id)
 
     @property
+    def citations(self) -> "Listing[Citation]":
+        """The citations made in the version in force of each article of the Project.
+
+        They come by article, in the order of the positions, then in the order of the text.
+        """
+        return Listing(citation for article in self.articles for citation in article.citations)
+
+    def to_citation_edges(self) -> list[tuple[str, str]]:
+        """Return the graph of the citations of the Project as a list of edges.
+
+        Each edge is ``(article id, proposal id)``: the article cites the Proposal in its
+        version in force. The ids are opaque strings, and no object of the SDK is in the
+        list, so that a graph library reads it as it is. The edges come in the order of
+        :attr:`citations`.
+        """
+        return [(citation.article_id, citation.proposal_id) for citation in self.citations]
+
+    @property
     def proposals(self) -> "Listing[Proposal]":
         """The Proposals of the Project that are not Amendments, in the order of the rows."""
         return self.dataset._proposals_in(self.id)
@@ -327,6 +347,11 @@ class Article(Entity):
         """
         return self.current_version.proposals
 
+    @property
+    def citations(self) -> "Listing[Citation]":
+        """The citations made in the version in force, in the order of the text."""
+        return self.current_version.citations
+
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
 class ArticleVersion(Entity):
@@ -391,6 +416,11 @@ class ArticleVersion(Entity):
     def proposals(self) -> "Listing[Proposal]":
         """The Proposals placed in the version, in the order of :attr:`placements`."""
         return Listing(placement.proposal for placement in self.placements)
+
+    @property
+    def citations(self) -> "Listing[Citation]":
+        """The citations made in the version, in the order of the text and of ranks."""
+        return self.dataset._citations_in(self.id)
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
@@ -516,6 +546,80 @@ class Placement(Entity):
 
 
 @dataclass(frozen=True, kw_only=True, eq=False, repr=False)
+class Citation(Entity):
+    """A Proposal cited in the text of an article that is not its parent article.
+
+    A Proposal has one parent article, where it is placed; any other article can cite
+    it, in a paragraph or before the first heading, even an article of another Project.
+    The source of a citation is the article version that cites, its target is the cited
+    Proposal, and the cited Revision is the one in force of that Proposal: the text cites
+    the Proposal, never a Revision, and always shows its last adopted Revision.
+
+    The cited Proposal may belong to a Project that the dataset does not hold: its id is
+    kept, and reading the Proposal then raises :class:`~civiqhub.errors.NotFoundError`.
+    The id of a citation names the Proposal and the version, such as ``p-01@art-2.v1``.
+
+    Args:
+        id: The id of the citation.
+        dataset: The dataset that the citation comes from.
+        proposal_id: The id of the cited Proposal.
+        article_id: The id of the article that cites it.
+        version_number: The number of the version of the article.
+        paragraph_id: The id of the paragraph within its version, without prefix, or
+            ``None`` outside any paragraph.
+        rank: The rank of the citation in its paragraph, as the source gives it.
+    """
+
+    proposal_id: str
+    article_id: str
+    version_number: int = 1
+    paragraph_id: str | None = None
+    rank: int = 0
+
+    #: The name of a citation in messages.
+    noun: ClassVar[str] = "citation"
+
+    @property
+    def proposal(self) -> "Proposal":
+        """The cited Proposal, the target of the citation.
+
+        Raises:
+            NotFoundError: The Proposal belongs to a Project that the dataset does not hold.
+        """
+        return self.dataset.proposals[self.proposal_id]
+
+    @property
+    def version(self) -> ArticleVersion:
+        """The article version that cites the Proposal, the source of the citation."""
+        return self.dataset.article_versions[f"{self.article_id}.v{self.version_number}"]
+
+    @property
+    def article(self) -> Article:
+        """The article that cites the Proposal."""
+        return self.dataset.articles[self.article_id]
+
+    @property
+    def paragraph(self) -> Paragraph | None:
+        """The paragraph where the Proposal is cited, or ``None`` outside any."""
+        if self.paragraph_id is None:
+            return None
+        key = f"{self.article_id}.v{self.version_number}#{self.paragraph_id}"
+        return self.dataset.paragraphs[key]
+
+    @property
+    def cited_revision(self) -> "Revision":
+        """The Revision that the citation shows: the one in force of the cited Proposal.
+
+        It is read, never stored: when an Amendment is adopted, the citation shows the new
+        Revision.
+
+        Raises:
+            NotFoundError: The Proposal belongs to a Project that the dataset does not hold.
+        """
+        return self.proposal.current_revision
+
+
+@dataclass(frozen=True, kw_only=True, eq=False, repr=False)
 class Proposal(Entity):
     """A statement put to the collective of a Project.
 
@@ -580,6 +684,16 @@ class Proposal(Entity):
         if article is None:
             return None
         return self.dataset._placement_of(self.id, article.current_version.id)
+
+    @property
+    def citations(self) -> "Listing[Citation]":
+        """The citations of this Proposal in the version in force of each citing article.
+
+        A citation is made by an article, not by a Proposal: these are the citations that
+        come to this Proposal. To read what an article cites, use
+        :attr:`Article.citations`.
+        """
+        return self.dataset._citations_of(self.id)
 
     @property
     def revisions(self) -> "Listing[Revision]":

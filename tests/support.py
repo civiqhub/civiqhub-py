@@ -29,6 +29,8 @@ ticket of the model adds the sections it builds.
     (version 1). Their rows come in another order; see article_rows().
     The current version of art-1 has five paragraphs, in two levels of headings and
     three; p-01 and p-02 are placed in its paragraph 1.1. See paragraph_rows().
+    art-2 cites p-01 and p-03, and a Proposal of another Project; art-1 cites p-03.
+    See citation_rows().
 
     At the pseudonymised level, four actants: the members m-001, m-002 and m-003, and
     the agent g-001. m-003 voted only on p-01.r1, the old revision of p-01; p-01.r2 was
@@ -262,6 +264,18 @@ PLACEMENTS: tuple[tuple[str, str, int, str | None, int], ...] = (
 )
 
 
+# (cited proposal, citing article, version, paragraph id or None, rank). art-2 cites p-01,
+# whose parent is art-1, and p-03, a Proposal of a Group; ext-7 belongs to a Project that
+# the rows do not hold. Version 2 of art-1 cited p-03 too.
+CITATIONS: tuple[tuple[str, str, int, str | None, int], ...] = (
+    ("ext-7", "art-2", 1, "c0f1", 1),
+    ("p-01", "art-2", 1, "c0f1", 0),
+    ("p-03", "art-2", 1, None, 0),
+    ("p-03", "art-1", 3, "b5d2", 0),
+    ("p-03", "art-1", 2, "3f2a", 0),
+)
+
+
 def minimal_rows() -> dict[str, Any]:
     """Return fresh minimal rows: one Group, one Project and its participation."""
     return {
@@ -400,6 +414,26 @@ def paragraph_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
             **({"paragraph_id": paragraph_id} if paragraph_id is not None else {}),
         }
         for proposal_id, article_id, version_number, paragraph_id, rank in PLACEMENTS
+    ]
+    return rows
+
+
+def citation_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
+    """Return fresh paragraph rows with the citations of Proposals in the articles.
+
+    Args:
+        pseudonymised: Whether the rows are at the pseudonymised level.
+    """
+    rows = paragraph_rows(pseudonymised=pseudonymised)
+    rows["citations"] = [
+        {
+            "proposal_id": proposal_id,
+            "article_id": article_id,
+            "version_number": version_number,
+            "rank": rank,
+            **({"paragraph_id": paragraph_id} if paragraph_id is not None else {}),
+        }
+        for proposal_id, article_id, version_number, paragraph_id, rank in CITATIONS
     ]
     return rows
 

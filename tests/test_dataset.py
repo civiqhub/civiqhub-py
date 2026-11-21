@@ -26,9 +26,6 @@ from support import (
     reference_rows,
 )
 
-# The sections that this version keeps without building objects from them.
-RESERVED = ("citations",)
-
 
 def with_second_project(rows: dict[str, Any]) -> dict[str, Any]:
     """Add a second Project, with its participation, to the rows."""
@@ -208,20 +205,16 @@ def test_an_unknown_key_is_ignored() -> None:
     assert not hasattr(project, "colour")
 
 
-def test_reserved_sections_are_kept_and_count_in_the_fingerprint() -> None:
+def test_an_unknown_section_is_kept_and_counts_in_the_fingerprint() -> None:
     rows = minimal_rows()
     plain = Dataset(rows).fingerprint()
-    for section in RESERVED:
-        rows[section] = [{"id": f"{section}-1"}]
+    rows["notes"] = [{"id": "note-1"}]
     dataset = Dataset(rows)
     assert dataset.fingerprint() != plain
-    for section in RESERVED:
-        changed = copy.deepcopy(rows)
-        changed[section] = [{"id": f"{section}-2"}]
-        assert Dataset(changed).fingerprint() != dataset.fingerprint()
-    assert {section: dataset.to_dict()[section] for section in RESERVED} == {
-        section: rows[section] for section in RESERVED
-    }
+    changed = copy.deepcopy(rows)
+    changed["notes"] = [{"id": "note-2"}]
+    assert Dataset(changed).fingerprint() != dataset.fingerprint()
+    assert dataset.to_dict()["notes"] == [{"id": "note-1"}]
 
 
 def test_a_section_is_a_list_of_rows() -> None:
