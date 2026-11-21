@@ -9,12 +9,16 @@ can write, with an entry ``format``, an instant ``as_of``, a level of ``exposure
 list of rows per section. A missing section is an empty list, and a key that a row does
 not need is ignored.
 
-This version builds fifteen sections: ``groups``, ``projects``, ``participation``,
-``articles``, ``article_versions``, ``paragraphs``, ``placements``, ``proposals``,
-``revisions``, ``vote_counts``, ``amendments``, ``arguments``, and, in a pseudonymised
-dataset only, ``actants``, ``votes`` and ``impressions``. The section ``citations`` is kept
-as it is: it counts in the fingerprint and comes back from :meth:`Dataset.to_dict`, but no
-object is built from it yet.
+This version builds every section of the format: ``groups``, ``projects``,
+``participation``, ``articles``, ``article_versions``, ``paragraphs``, ``placements``,
+``citations``, ``proposals``, ``revisions``, ``vote_counts``, ``amendments``,
+``arguments``, and, in a pseudonymised dataset only, ``actants``, ``votes`` and
+``impressions``. A key that the format does not know is kept: it counts in the
+fingerprint and comes back from :meth:`Dataset.to_dict`.
+
+A row of ``citations`` has the keys of a row of ``placements``: ``proposal_id``,
+``article_id``, ``version_number``, ``paragraph_id`` and ``rank``. It is a Proposal cited
+in an article that is not its parent article.
 
 :meth:`Dataset.save` writes the rows to a JSON file, and :meth:`Dataset.from_file` reopens
 it, with the same fingerprint.
@@ -35,6 +39,7 @@ from .entities import (
     Argument,
     Article,
     ArticleVersion,
+    Citation,
     Entity,
     Group,
     Member,
@@ -135,6 +140,9 @@ class Dataset:
         "_as_of",
         "_children",
         "_children_by_paragraph",
+        "_citations",
+        "_citations_by_proposal",
+        "_citations_by_version",
         "_current_revisions",
         "_current_versions",
         "_depths",
@@ -182,6 +190,9 @@ class Dataset:
     _as_of: str
     _children: dict[str, Listing[Group]]
     _children_by_paragraph: dict[str, Listing[Paragraph]]
+    _citations: Listing[Citation]
+    _citations_by_proposal: dict[str, Listing[Citation]]
+    _citations_by_version: dict[str, Listing[Citation]]
     _current_revisions: dict[str, Revision]
     _current_versions: dict[str, ArticleVersion]
     _depths: dict[str, int]
@@ -244,6 +255,7 @@ class Dataset:
         self._build_paragraphs(sections["paragraphs"])
         proposals = self._build_proposals(sections, projects)
         self._build_placements(sections["placements"])
+        self._build_citations(sections["citations"])
         self._build_arguments(sections["arguments"], proposals)
         self._build_actants(
             sections, has_votes="votes" in data, has_impressions="impressions" in data
@@ -511,6 +523,73 @@ class Dataset:
                 for placement in ordered
             },
         )
+
+    def _build_citations(self, rows: list[_Row]) -> None:
+        order = {paragraph.id: index for index, paragraph in enumerate(self._paragraphs)}
+        versions = {version.id: index for index, version in enumerate(self._article_versions)}
+        citations: list[tuple[tuple[int, int, int, int], Citation]] = []
+        seen: dict[str, int] = {}
+        for index, row in enumerate(rows):
+            where = f"citations[{index}]"
+            proposal_id = _identifier(row, "proposal_id", where)
+            article_id = _identifier(row, "article_id", where)
+            version_number = _positive(row, "version_number", where)
+            paragraph_id = None if row.get("paragraph_id") is None else _paragraph_id(row, where)
+            rank = _rank(row, where)
+            version_id = f"{article_id}.v{version_number}"
+            if version_id not in versions:
+                raise ValidationError(
+                    f"The row {where} cites the proposal {proposal_id!r} in the version "
+                    f"{version_number} of the article {article_id!r}, and the dataset has no "
+                    f"such version."
+                )
+            key = None if paragraph_id is None else f"{version_id}#{paragraph_id}"
+            if key is not None and key not in order:
+                raise ValidationError(
+                    f"The row {where} cites the proposal {proposal_id!r} in the paragraph "
+                    f"{paragraph_id!r} of the version {version_number} of the article "
+                    f"{article_id!r}, and this version has no such paragraph."
+                )
+            # The cited Proposal may belong to a Project that the dataset does not hold.
+            proposal = self._proposals.get(proposal_id)
+            if proposal is not None and proposal.article_id == article_id:
+                raise ValidationError(
+                    f"The row {where} cites the proposal {proposal_id!r} in the article "
+                    f"{article_id!r}, which is its parent article: there, a proposal is "
+                    f"placed, in the section 'placements', not cited."
+                )
+            citation = Citation(
+                id=f"{proposal_id}@{version_id}",
+                dataset=self,
+                proposal_id=proposal_id,
+                article_id=article_id,
+                version_number=version_number,
+                paragraph_id=paragraph_id,
+                rank=rank,
+            )
+            if citation.id in seen:
+                raise ValidationError(
+                    f"The rows citations[{seen[citation.id]}] and {where} both cite the "
+                    f"proposal {proposal_id!r} in the version {version_number} of the article "
+                    f"{article_id!r}: a proposal appears once in an article."
+                )
+            seen[citation.id] = index
+            position = -1 if key is None else order[key]
+            citations.append(((versions[version_id], position, rank, index), citation))
+        citations.sort(key=lambda pair: pair[0])
+        ordered = [citation for _, citation in citations]
+        current = {version.id for version in self._current_versions.values()}
+        by_version: dict[str, list[Citation]] = {}
+        by_proposal: dict[str, list[Citation]] = {}
+        for citation in ordered:
+            version_id = f"{citation.article_id}.v{citation.version_number}"
+            by_version.setdefault(version_id, []).append(citation)
+            if version_id in current:
+                by_proposal.setdefault(citation.proposal_id, []).append(citation)
+        _set = object.__setattr__
+        _set(self, "_citations", Listing(ordered))
+        _set(self, "_citations_by_version", _freeze(by_version))
+        _set(self, "_citations_by_proposal", _freeze(by_proposal))
 
     def _build_proposals(
         self, sections: Mapping[str, list[_Row]], projects: list[Project]
@@ -983,6 +1062,12 @@ class Dataset:
         return self._placements
 
     @property
+    def citations(self) -> Listing[Citation]:
+        """Every citation, in every article version: by version, then in the order of the
+        text and of the ranks."""
+        return self._citations
+
+    @property
     def proposals(self) -> Listing[Proposal]:
         """Every Proposal of the dataset, in the order of the rows."""
         return self._proposals
@@ -1157,6 +1242,12 @@ class Dataset:
 
     def _placement_of(self, proposal_id: str, version_id: str) -> Placement | None:
         return self._placement_by_pair.get((proposal_id, version_id))
+
+    def _citations_in(self, version_id: str) -> Listing[Citation]:
+        return self._citations_by_version.get(version_id, Listing())
+
+    def _citations_of(self, proposal_id: str) -> Listing[Citation]:
+        return self._citations_by_proposal.get(proposal_id, Listing())
 
     def _proposals_in(self, project_id: str) -> Listing[Proposal]:
         return self._proposals_by_project.get(project_id, Listing())

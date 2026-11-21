@@ -9,7 +9,7 @@ This page describes how the SDK is built: the rules every module follows, how th
 3. **The core imports neither the engine nor NumPy.** `import civiqhub` loads the standard library only, and a test proves it. The analyses will live in the engine `civiqhub-selene`; the SDK holds no formula.
 4. **Three states per vote.** An Actant voted on a Revision, abstained (the Revision was shown, and no vote came), or never saw it. When the data do not record what was shown, the state is unknown. An absence is never a zero nor a neutral answer.
 5. **Exposure.** At the aggregated level, a dataset holds neither individual votes nor Actants; asking for them raises {py:class}`~civiqhub.ExposureError`, which says how to get the pseudonymised level. No name, e-mail address or user id of a person enters an object: an Actant is known by its pseudonym only. The token appears in no `repr`, file or source.
-6. **Every analysis will cite itself.** A result of analysis will carry the result of the engine and a citation: the Project, the instant, the fingerprint of the dataset, the method, its version, its settings, the seed and the fingerprint of the computation. This rule waits for the bridge to the engine.
+6. **Every analysis will say how to find it again.** A result of analysis will carry the result of the engine and what it takes to compute it again: the Project, the instant, the fingerprint of the dataset, the method, its version, its settings, the seed and the fingerprint of the computation. This rule waits for the bridge to the engine. The word "citation" is kept for the citation of a Proposal in an article.
 
 ## Modules
 
@@ -19,7 +19,7 @@ flowchart TD
   client --> dataset["dataset<br>Dataset"]
   synthetic["synthetic<br>make_rows, make_truth, make_project"] --> client
   sources --> dataset
-  dataset --> entities["entities<br>Entity, Group, Project, Article, ArticleVersion,<br>Paragraph, Placement, Proposal, Amendment,<br>Revision, Argument, Actant, Member, Agent, Vote"]
+  dataset --> entities["entities<br>Entity, Group, Project, Article, ArticleVersion,<br>Paragraph, Placement, Citation, Proposal,<br>Amendment, Revision, Argument, Actant, Member,<br>Agent, Vote"]
   entities --> values["values<br>Exposure, Role, ActantKind, AmendmentStatus,<br>Position, VoteState, VoteCounts, Participation"]
   entities --> listing["listing<br>Listing"]
   values --> errors["errors<br>CiviqHubError and its seven errors"]
@@ -37,11 +37,11 @@ flowchart TD
 | {py:mod}`civiqhub.client` | {py:class}`~civiqhub.Client`, {py:func}`~civiqhub.connect`, {py:func}`~civiqhub.load` | standard library |
 | {py:mod}`civiqhub.synthetic` | {py:func}`~civiqhub.make_rows`, {py:func}`~civiqhub.make_truth`, {py:func}`~civiqhub.make_project` | standard library (`random`, seeded) |
 
-Not written yet: the bridge to the engine, `civiqhub.analysis`; the citations between Proposals, whose section a dataset keeps as it is.
+Not written yet: the bridge to the engine, `civiqhub.analysis`.
 
 ## The dataset
 
-A source gives rows: a dictionary that JSON can write, in the format {py:data}`civiqhub.dataset.FORMAT`, with one list of rows per section (`groups`, `projects`, `articles`, `article_versions`, `paragraphs`, `placements`, `proposals`, `revisions`, `vote_counts`, `amendments`, `arguments`, and at the pseudonymised level `actants`, `votes`, `impressions`). A {py:class}`~civiqhub.Dataset` checks these rows once, when it is built, and gives a graph of frozen objects.
+A source gives rows: a dictionary that JSON can write, in the format {py:data}`civiqhub.dataset.FORMAT`, with one list of rows per section (`groups`, `projects`, `articles`, `article_versions`, `paragraphs`, `placements`, `citations`, `proposals`, `revisions`, `vote_counts`, `amendments`, `arguments`, and at the pseudonymised level `actants`, `votes`, `impressions`). A {py:class}`~civiqhub.Dataset` checks these rows once, when it is built, and gives a graph of frozen objects.
 
 ```mermaid
 flowchart LR
@@ -143,6 +143,8 @@ spreadsheet budget.ods aggregated
 | actant | Whoever acts in a Project: a human member or an agent, known by a pseudonym only |
 | vote counts | The five counts of the votes of a Revision, from score -2 to score +2 |
 | exposure | The level of detail served: aggregated or pseudonymised |
+| placement | Where a Proposal sits in its parent article: a paragraph and a rank |
+| citation | A Proposal shown in the text of an article that is not its parent article |
 | impression | The fact that a Revision was shown to an Actant |
 | vote state | Where an Actant stands on a Revision: voted, abstained, not shown or unknown |
 | fingerprint | 16 hexadecimal characters of a SHA-256 of the rows; the same rows give the same fingerprint |

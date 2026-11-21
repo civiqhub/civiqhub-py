@@ -14,7 +14,8 @@
 What a source gives is a :class:`~civiqhub.dataset.Dataset`: a frozen graph of the objects
 of the product, :class:`~civiqhub.entities.Group`, :class:`~civiqhub.entities.Project`,
 :class:`~civiqhub.entities.Article` (with :class:`~civiqhub.entities.ArticleVersion`,
-:class:`~civiqhub.entities.Paragraph` and :class:`~civiqhub.entities.Placement`),
+:class:`~civiqhub.entities.Paragraph`, :class:`~civiqhub.entities.Placement` and
+:class:`~civiqhub.entities.Citation`),
 :class:`~civiqhub.entities.Proposal`, :class:`~civiqhub.entities.Amendment`,
 :class:`~civiqhub.entities.Revision`, :class:`~civiqhub.entities.Argument`,
 :class:`~civiqhub.entities.Actant` (with :class:`~civiqhub.entities.Member` and
@@ -35,6 +36,7 @@ from .entities import (
     Argument,
     Article,
     ArticleVersion,
+    Citation,
     Entity,
     Group,
     Member,
@@ -80,6 +82,7 @@ __all__ = [
     "Article",
     "ArticleVersion",
     "AuthenticationError",
+    "Citation",
     "CiviqHubError",
     "Client",
     "Dataset",
