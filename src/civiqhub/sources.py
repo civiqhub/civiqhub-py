@@ -30,6 +30,7 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, TypeAlias
 from urllib.parse import quote, urlencode
@@ -242,6 +243,11 @@ class ApiSource(Source):
     reading at an instant are assumptions taken from the prototype. They live in this
     class only, so that they change without touching anything else.
 
+    The articles are the exception: their three routes are those of the contract of the
+    API, version 0.4.123, and their answers are turned into the rows of ``articles``,
+    ``article_versions``, ``paragraphs``, ``placements`` and ``citations``. These routes
+    take no instant, so a version published after ``as_of`` is left out.
+
     The token is kept private. :meth:`describe` and ``repr`` show its last four
     characters at most, and no message of an error holds it.
 
@@ -271,7 +277,13 @@ class ApiSource(Source):
     #: - ``group``, ``project``, ``participation``: one row;
     #: - ``group_projects``, ``proposals``, ``revisions``, ``amendments``, ``arguments``,
     #:   ``vote_counts``: pages;
-    #: - ``actants``, ``votes``: pages, at the pseudonymised level only.
+    #: - ``actants``, ``votes``: pages, at the pseudonymised level only;
+    #: - ``articles``, ``article_versions``: the published articles of a Project and the
+    #:   versions of one, routes of the contract read with ``page`` and ``limit``, whose
+    #:   pages answer ``{"items": [...], "meta": {"hasNextPage": ...}}``. ``{article}`` is
+    #:   the id of an article;
+    #: - ``article_version``: one version, ``{number}``, with its outline and the blocks
+    #:   of its Proposals.
     PATHS: ClassVar[dict[str, str]] = {
         "scope": "/token",
         "group": "/groups/{id}",
@@ -285,6 +297,9 @@ class ApiSource(Source):
         "participation": "/projects/{id}/participation",
         "actants": "/projects/{id}/actants",
         "votes": "/projects/{id}/votes",
+        "articles": "/projects/{id}/articles",
+        "article_versions": "/projects/{id}/articles/{article}/versions",
+        "article_version": "/projects/{id}/articles/{article}/versions/{number}",
     }
 
     # The sections read as pages for each Project, in the order of the reads.
@@ -374,7 +389,7 @@ class ApiSource(Source):
         scope = self._read_scope()
         as_of = scope["as_of"]
         rows: _Row = {"format": FORMAT, "as_of": as_of, "exposure": level.value}
-        sections = ["groups", "projects", "participation", *self._LISTS]
+        sections = ["groups", "projects", "participation", *self._LISTS, *_ARTICLE_SECTIONS]
         if level is Exposure.PSEUDONYMISED:
             sections += ["actants", "votes"]
         rows.update({section: [] for section in sections})
@@ -408,6 +423,8 @@ class ApiSource(Source):
             rows["participation"] += self._one(
                 "participation", "participation", project_id, as_of=as_of
             )
+            for section, found in self._read_articles(project_id, as_of).items():
+                rows[section] += found
             if level is Exposure.PSEUDONYMISED:
                 detail = {"as_of": as_of, "exposure": level.value}
                 rows["votes"] += self._pages("votes", "votes", project_id, **detail)
@@ -418,11 +435,132 @@ class ApiSource(Source):
         _detach(rows)
         return rows
 
+    def _read_articles(self, project_id: str, as_of: str) -> dict[str, list[_Row]]:
+        """Read the published articles of a Project as they stood at the instant ``as_of``.
+
+        The routes of the articles take no instant. A version published after ``as_of``
+        is left out, and so is an article that had no version by then. An article takes
+        the title, the description and the instant of its last version kept. Its position
+        is its place in the list, which the API orders by the rank of the articles.
+
+        The outline of a version gives its paragraphs. Its blocks give the placements,
+        role ``PARENT``, and the citations, role ``CITATION``. The rank of a block is its
+        place among the blocks of its paragraph, in the order of the text.
+        """
+        found: dict[str, list[_Row]] = {section: [] for section in _ARTICLE_SECTIONS}
+        cutoff = _moment(as_of, self.PATHS["scope"])
+        where = self._path("articles", project_id)
+        position = 0
+        for item in self._offset_pages("articles", project_id):
+            article_id = _answered(item, "id", str, where)
+            names = {"article": article_id}
+            at = self._path("article_versions", project_id, **names)
+            numbers = [
+                _whole(version, "versionNumber", at)
+                for version in self._offset_pages("article_versions", project_id, **names)
+                if _moment(_answered(version, "publishedAt", str, at), at) <= cutoff
+            ]
+            if not numbers:
+                continue
+            position += 1
+            last: _Row = {}
+            for number in sorted(set(numbers)):
+                last = self._read_version(project_id, article_id, number, found)
+            found["articles"].append(
+                {
+                    "id": article_id,
+                    "project_id": project_id,
+                    "position": position,
+                    "title": last["title"],
+                    **({"description": last["description"]} if last["description"] else {}),
+                    "current_version_number": last["version_number"],
+                    "published_at": last["published_at"],
+                }
+            )
+        return found
+
+    def _read_version(
+        self, project_id: str, article_id: str, number: int, found: dict[str, list[_Row]]
+    ) -> _Row:
+        """Read one version of an article into ``found``, and return its row."""
+        names = {"article": article_id, "number": str(number)}
+        where = self._path("article_version", project_id, **names)
+        answer = self._get("article_version", project_id, names)
+        description = _answered(answer, "description", str, where, nullable=True)
+        version: _Row = {
+            "article_id": article_id,
+            "version_number": number,
+            "title": _answered(answer, "title", str, where),
+            "body": _answered(answer, "body", str, where),
+            "published_at": _answered(answer, "publishedAt", str, where),
+        }
+        found["article_versions"].append(version)
+        for entry in _answered(answer, "outline", list, where):
+            found["paragraphs"].append(
+                {
+                    "article_id": article_id,
+                    "version_number": number,
+                    "paragraph_id": _answered(entry, "paragraphId", str, where),
+                    "level": _whole(entry, "level", where),
+                    "number": _answered(entry, "number", str, where),
+                    "title": _answered(entry, "title", str, where),
+                }
+            )
+        ranks: dict[str | None, int] = {}
+        for block in _answered(answer, "proposalBlocks", list, where):
+            role = _answered(block, "role", str, where)
+            if role not in _ROLES:
+                raise CiviqHubError(
+                    f"The API answered {where} with a block of role {role!r}; the roles are "
+                    f"'PARENT' and 'CITATION'.",
+                    hint=_CHANGED,
+                )
+            paragraph_id = _answered(block, "paragraphId", str, where, nullable=True)
+            rank = ranks.get(paragraph_id, 0)
+            ranks[paragraph_id] = rank + 1
+            found[_ROLES[role]].append(
+                {
+                    "proposal_id": _answered(block, "proposalId", str, where),
+                    "article_id": article_id,
+                    "version_number": number,
+                    "rank": rank,
+                    **({"paragraph_id": paragraph_id} if paragraph_id is not None else {}),
+                }
+            )
+        return {**version, "description": description}
+
+    def _offset_pages(self, key: str, id: str, **names: str) -> list[Any]:
+        """Read every page of a route of the contract, by ``page`` and ``limit``."""
+        where = self._path(key, id, **names)
+        items: list[Any] = []
+        page = 1
+        while True:
+            answer = self._get(key, id, names, page=str(page), limit=str(_PAGE_LIMIT))
+            if (
+                not isinstance(answer, dict)
+                or not isinstance(answer.get("items"), list)
+                or not isinstance(answer.get("meta"), dict)
+            ):
+                raise CiviqHubError(
+                    f"The API answered {where} with a page that has no list 'items' and no 'meta'.",
+                    hint=_CHANGED,
+                )
+            items += answer["items"]
+            more = _answered(answer["meta"], "hasNextPage", bool, where)
+            if not more:
+                return items
+            if not answer["items"]:
+                raise CiviqHubError(
+                    f"The API answered {where} with an empty page that announces another one.",
+                    hint=_LATER,
+                )
+            page += 1
+
     def _to_rows(self, section: str, answer: Any) -> list[_Row]:
         """Turn an answer of the API into rows of a section of the format.
 
-        It is the only place where the shape of the answers meets the format of the
-        rows. Today, the API is assumed to answer rows already.
+        Outside the articles, it is the only place where the shape of the answers meets
+        the format of the rows. Today, the API is assumed to answer rows already.
         """
         answered = [answer] if isinstance(answer, dict) else answer
         if not isinstance(answered, list) or not all(isinstance(row, dict) for row in answered):
@@ -474,11 +612,14 @@ class ApiSource(Source):
                 )
             cursors.add(cursor)
 
-    def _path(self, key: str, id: str = "") -> str:
-        return self.PATHS[key].format(id=quote(id, safe=""))
+    def _path(self, key: str, id: str = "", **names: str) -> str:
+        quoted = {name: quote(value, safe="") for name, value in names.items()}
+        return self.PATHS[key].format(id=quote(id, safe=""), **quoted)
 
-    def _get(self, key: str, id: str = "", **query: str) -> Any:
-        path = self._path(key, id)
+    def _get(
+        self, key: str, id: str = "", names: Mapping[str, str] | None = None, /, **query: str
+    ) -> Any:
+        path = self._path(key, id, **(names or {}))
         url = self.base_url + path + ("?" + urlencode(query) if query else "")
         headers = {"Authorization": f"Bearer {self._token}", "Accept": "application/json"}
         status, answered, body = self._transport(url, headers)
@@ -523,9 +664,58 @@ class ApiSource(Source):
             ) from None
 
 
+# The sections that the routes of the articles fill.
+_ARTICLE_SECTIONS = ("articles", "article_versions", "paragraphs", "placements", "citations")
+
+# The section of a block of a Proposal, by its role in the article.
+_ROLES = {"PARENT": "placements", "CITATION": "citations"}
+
+# How many items a page of a route of the contract holds: its maximum.
+_PAGE_LIMIT = 50
+
 # The hints of the errors that the API itself causes.
 _CHANGED = "The public API may have changed; update civiqhub, then call again."
 _LATER = "Call again later; if it lasts, report it to CiviqHub."
+
+
+def _answered(
+    item: object, key: str, kind: type | tuple[type, ...], where: str, *, nullable: bool = False
+) -> Any:
+    """Read a field of an answer, of the kind that the contract gives it."""
+    value = item.get(key) if isinstance(item, dict) else None
+    if value is None and nullable and isinstance(item, dict):
+        return None
+    if not isinstance(value, kind) or (isinstance(value, bool) and kind is not bool):
+        raise CiviqHubError(
+            f"The API answered {where} without a valid {key!r}.",
+            hint=_CHANGED,
+        )
+    return value
+
+
+def _whole(item: object, key: str, where: str) -> int:
+    """Read a field that the contract types as a number, and that counts whole things."""
+    value = _answered(item, key, (int, float), where)
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise CiviqHubError(
+                f"The API answered {where} with a {key!r} that is not a whole number.",
+                hint=_CHANGED,
+            )
+        return int(value)
+    return int(value)
+
+
+def _moment(text: str, where: str) -> datetime:
+    """Read an instant in ISO 8601; an instant without an offset is in UTC."""
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        raise CiviqHubError(
+            f"The API answered {where} with an instant that is not in ISO 8601.",
+            hint=_CHANGED,
+        ) from None
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
 
 
 def _retry_after(headers: Mapping[str, str]) -> float | None:

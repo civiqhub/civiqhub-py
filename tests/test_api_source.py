@@ -27,7 +27,7 @@ from civiqhub.errors import (
 )
 from civiqhub.sources import DEFAULT_URL, TOKEN_PREFIX, TOKEN_VARIABLE, ApiSource
 from civiqhub.values import Exposure
-from support import AS_OF, PARTICIPATION, TOKEN, FakeApi, api_rows
+from support import AS_OF, PARTICIPATION, TOKEN, FakeApi, api_rows, contract_route
 
 AGGREGATED = Exposure.AGGREGATED
 PSEUDONYMISED = Exposure.PSEUDONYMISED
@@ -108,8 +108,13 @@ def test_every_read_after_the_scope_carries_the_same_instant() -> None:
     assert urlsplit(first[0]).path.endswith("/token")
     assert urlsplit(first[0]).query == ""
     assert others
-    for url, _ in others:
-        assert parse_qs(urlsplit(url).query)["as_of"] == [AS_OF], url
+    for (url, _), path in zip(others, fake.paths[1:], strict=True):
+        query = parse_qs(urlsplit(url).query)
+        if contract_route(path) is not None:
+            # The routes of the articles take no instant: see tests/test_api_articles.py.
+            assert "as_of" not in query, url
+            continue
+        assert query["as_of"] == [AS_OF], url
 
 
 def test_every_request_carries_the_token_in_its_header() -> None:
@@ -483,6 +488,7 @@ def test_an_unknown_level_is_refused() -> None:
 
 
 def test_the_paths_are_the_assumptions_of_the_prototype() -> None:
+    """The paths outside the articles; those of the articles are of the contract."""
     assert ApiSource.name == "api"
     assert ApiSource.PATHS["scope"] == "/token"
     assert ApiSource.PATHS["vote_counts"] == "/projects/{id}/votes/aggregates"
@@ -499,6 +505,9 @@ def test_the_paths_are_the_assumptions_of_the_prototype() -> None:
         "participation",
         "actants",
         "votes",
+        "articles",
+        "article_versions",
+        "article_version",
     }
 
 
