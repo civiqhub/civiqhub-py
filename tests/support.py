@@ -41,7 +41,9 @@ no socket.
 """
 
 import json
+import re
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -515,7 +517,10 @@ def api_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
     """Return the reference rows as a token of the Group g-1 reads them from the API.
 
     The API lists the Projects of a Group, not its sub-groups: here, the reference
-    Project sits right in g-1. The API records no impressions.
+    Project sits right in g-1. The API records no impressions. The articles are those of
+    :func:`citation_rows`, as the routes of the contract give them back: in the order of
+    the positions and of the versions, the ids of the paragraphs without prefix, their
+    numbers as text, and the blocks of each version in the order of its text.
 
     Args:
         pseudonymised: Whether the rows are at the pseudonymised level.
@@ -523,7 +528,121 @@ def api_rows(*, pseudonymised: bool = False) -> dict[str, Any]:
     rows = pseudonymised_rows(impressions=False) if pseudonymised else reference_rows()
     rows["groups"] = [group for group in rows["groups"] if group["id"] == "g-1"]
     rows["projects"][0]["group_id"] = "g-1"
+    rows.update(_api_articles(citation_rows()))
     return rows
+
+
+def _bare(paragraph_id: str | None) -> str | None:
+    return None if paragraph_id is None else paragraph_id.removeprefix("p-")
+
+
+def _api_articles(rows: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Return the article sections of rows as ApiSource reads them back."""
+    found: dict[str, list[dict[str, Any]]] = {
+        "articles": [],
+        "article_versions": [],
+        "paragraphs": [],
+        "placements": [],
+        "citations": [],
+    }
+    for article in sorted(rows["articles"], key=lambda row: row["position"]):
+        found["articles"].append(dict(article))
+        versions = [row for row in rows["article_versions"] if row["article_id"] == article["id"]]
+        for version in sorted(versions, key=lambda row: row["version_number"]):
+            found["article_versions"].append(dict(version))
+            for row in _version_paragraphs(rows, version):
+                found["paragraphs"].append({**row, "paragraph_id": _bare(row["paragraph_id"])})
+                found["paragraphs"][-1]["number"] = str(row["number"])
+            for section, block in _version_blocks(rows, version):
+                bare = _bare(block.get("paragraph_id"))
+                found[section].append(
+                    {
+                        **{key: value for key, value in block.items() if key != "paragraph_id"},
+                        **({"paragraph_id": bare} if bare is not None else {}),
+                    }
+                )
+    return found
+
+
+def _version_paragraphs(rows: dict[str, Any], version: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows.get("paragraphs", [])
+        if (row["article_id"], row["version_number"])
+        == (version["article_id"], version["version_number"])
+    ]
+
+
+def _version_blocks(
+    rows: dict[str, Any], version: dict[str, Any]
+) -> list[tuple[str, dict[str, Any]]]:
+    """Return the placements and citations of a version, in the order of its text."""
+    order = {
+        _bare(row["paragraph_id"]): index
+        for index, row in enumerate(_version_paragraphs(rows, version))
+    }
+    blocks = [
+        (section, row)
+        for section in ("placements", "citations")
+        for row in rows.get(section, [])
+        if (row["article_id"], row["version_number"])
+        == (version["article_id"], version["version_number"])
+    ]
+    return sorted(
+        blocks,
+        key=lambda pair: (
+            -1 if pair[1].get("paragraph_id") is None else order[_bare(pair[1]["paragraph_id"])],
+            pair[1]["rank"],
+        ),
+    )
+
+
+#: The routes and fields of the contract of the API that ApiSource reads, extracted by
+#: tests/contract/extract.py. The fake API serves its articles from it.
+CONTRACT: dict[str, Any] = json.loads(
+    (Path(__file__).parent / "contract" / "articles.json").read_text(encoding="utf-8")
+)
+
+
+def contract_route(path: str) -> tuple[str, dict[str, str]] | None:
+    """Return the operation of the contract that a path names, and its path parameters."""
+    for name, route in CONTRACT["routes"].items():
+        pattern = "^" + re.sub(r"\{(\w+)\}", r"(?P<\1>[^/]+)", route["path"]) + "$"
+        found = re.match(pattern, path)
+        if found:
+            return name, found.groupdict()
+    return None
+
+
+def conforms(value: Any, field: Mapping[str, Any]) -> bool:
+    """Whether a value has the type that the contract gives a field or an answer."""
+    if value is None:
+        return bool(field.get("nullable"))
+    if "schema" in field:
+        schema = CONTRACT["schemas"][field["schema"]]
+        return (
+            isinstance(value, dict)
+            and set(value) <= set(schema)
+            and all(key in value for key, spec in schema.items() if spec["required"])
+            and all(conforms(value[key], schema[key]) for key in value)
+        )
+    kind = field["type"]
+    if kind == "array":
+        return isinstance(value, list) and all(conforms(item, field["items"]) for item in value)
+    if kind == "object":
+        properties = field.get("properties", {})
+        return (
+            isinstance(value, dict)
+            and set(value) <= set(properties)
+            and all(key in value for key in field.get("required", []))
+            and all(conforms(value[key], properties[key]) for key in value)
+        )
+    valid = {
+        "string": isinstance(value, str),
+        "number": isinstance(value, int | float) and not isinstance(value, bool),
+        "boolean": isinstance(value, bool),
+    }[kind]
+    return valid and value in field.get("enum", [value])
 
 
 #: The fake token of the tests.
@@ -537,6 +656,10 @@ class FakeApi:
 
     It answers the paths of ``ApiSource.PATHS`` under ``DEFAULT_URL``. A path set in
     :attr:`answers` gets that answer instead; any other path gets a 404.
+
+    The routes of the articles are those of :data:`CONTRACT`. Their answers are built
+    from the rows in the shape of the contract and checked against it, and a query
+    parameter that the contract does not give the route gets a 422.
 
     Args:
         rows: The rows it serves, in the format of a dataset.
@@ -572,7 +695,23 @@ class FakeApi:
         path, query = _split(url)
         if path in self.answers:
             return self.answers[path]
-        body = self._answer(path, query)
+        route = contract_route(path)
+        if route is not None:
+            name, parameters = route
+            allowed = CONTRACT["routes"][name]["query_parameters"]
+            if not set(query) <= set(allowed) or not all(
+                value.isdigit()
+                and allowed[key].get("minimum", 0)
+                <= int(value)
+                <= allowed[key].get("maximum", int(value))
+                for key, value in query.items()
+            ):
+                return 422, {}, b'{"error": "unprocessable"}'
+            body = self._contract_answer(name, parameters, query)
+            if body is not None:
+                assert conforms(body, CONTRACT["routes"][name]["answer"]), (name, body)
+        else:
+            body = self._answer(path, query)
         if body is None:
             return 404, {}, b'{"error": "not_found"}'
         return 200, {"Content-Type": "application/json"}, json.dumps(body).encode()
@@ -620,6 +759,65 @@ class FakeApi:
             if rest in sections:
                 return self._page(sections[rest], query)
         return None
+
+    def _contract_answer(self, name: str, parameters: dict[str, str], query: dict[str, str]) -> Any:
+        rows = self.rows
+        project_id = parameters["projectId"]
+        page = int(query.get("page", "1"))
+        size = min(int(query.get("limit", "10")), self.page_size)
+        articles = sorted(
+            (row for row in rows.get("articles", []) if row["project_id"] == project_id),
+            key=lambda row: row["position"],
+        )
+        if name == "listProjectArticles":
+            return self._offset([{"id": row["id"]} for row in articles], page, size)
+        article = next((row for row in articles if row["id"] == parameters["articleId"]), None)
+        if article is None:
+            return None
+        versions = sorted(
+            (row for row in rows.get("article_versions", []) if row["article_id"] == article["id"]),
+            key=lambda row: -row["version_number"],
+        )
+        if name == "listArticleVersions":
+            items = [
+                {"versionNumber": row["version_number"], "publishedAt": row["published_at"]}
+                for row in versions
+            ]
+            return self._offset(items, page, size)
+        number = parameters["versionNumber"]
+        version = next((row for row in versions if str(row["version_number"]) == number), None)
+        if version is None:
+            return None
+        return {
+            "title": version["title"],
+            "description": article.get("description"),
+            "body": version["body"],
+            "publishedAt": version["published_at"],
+            "outline": [
+                {
+                    "paragraphId": _bare(row["paragraph_id"]),
+                    "level": row["level"],
+                    "number": str(row["number"]),
+                    "title": row["title"],
+                }
+                for row in _version_paragraphs(rows, version)
+            ],
+            "proposalBlocks": [
+                {
+                    "proposalId": row["proposal_id"],
+                    "role": "PARENT" if section == "placements" else "CITATION",
+                    "paragraphId": _bare(row.get("paragraph_id")),
+                }
+                for section, row in _version_blocks(rows, version)
+            ],
+        }
+
+    def _offset(self, items: list[Any], page: int, size: int) -> dict[str, Any]:
+        start = (page - 1) * size
+        return {
+            "items": items[start : start + size],
+            "meta": {"hasNextPage": start + size < len(items)},
+        }
 
     def _page(self, items: list[Any], query: dict[str, str]) -> dict[str, Any]:
         start = int(query.get("cursor", "0"))

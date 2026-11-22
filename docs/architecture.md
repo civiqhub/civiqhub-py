@@ -90,7 +90,7 @@ A source is the port through which data enter the SDK. It has one duty: {py:meth
 
 | Source | Reads |
 | --- | --- |
-| {py:class}`~civiqhub.ApiSource` | The CiviqHub API, with a personal access token. Provisional: the API is not published, and its paths are assumptions kept in {py:attr}`ApiSource.PATHS <civiqhub.sources.ApiSource.PATHS>` |
+| {py:class}`~civiqhub.ApiSource` | The CiviqHub API, with a personal access token. Provisional: the API is not published, and its paths are assumptions kept in {py:attr}`ApiSource.PATHS <civiqhub.sources.ApiSource.PATHS>`. The articles are read by the routes of the contract of the API (0.4.123); these routes take no instant, so a version published after `as_of` is left out |
 | {py:class}`~civiqhub.FileSource` | A file written by {py:meth}`~civiqhub.dataset.Dataset.save` |
 | {py:class}`~civiqhub.MemorySource` | Rows held in memory: tests, simulations, the data of another system |
 

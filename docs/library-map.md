@@ -87,7 +87,7 @@ Import from the package: it is the shorter path, and the one that stays stable. 
 | Path | Content |
 | --- | --- |
 | [`src/civiqhub/`](https://github.com/civiqhub/civiqhub-py/tree/develop/src/civiqhub) | The SDK. One file per module of the reference: `civiqhub.sources` is `src/civiqhub/sources.py` |
-| [`tests/`](https://github.com/civiqhub/civiqhub-py/tree/develop/tests) | The tests, one file per subject. `tests/support.py` holds the hand-written rows and the fake API that the tests share |
+| [`tests/`](https://github.com/civiqhub/civiqhub-py/tree/develop/tests) | The tests, one file per subject. `tests/support.py` holds the hand-written rows and the fake API that the tests share. `tests/contract/` holds the routes and fields of the contract of the API that the SDK reads, from which the fake API serves the articles |
 | [`docs/`](https://github.com/civiqhub/civiqhub-py/tree/develop/docs) | The pages of this site |
 | [`docs/snippets.md`](https://github.com/civiqhub/civiqhub-py/tree/develop/docs/snippets.md) | The code of each use, run by the tests against a fake API |
 
