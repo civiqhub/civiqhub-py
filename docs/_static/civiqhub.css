@@ -1,0 +1,491 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at mozilla.org/MPL/2.0/. */
+
+/* Tokens of the CiviqHub light theme (bootstrap values from DesignGrok). */
+
+:root {
+  --civiqhub-primary: #2C448B;
+  --civiqhub-primary-foreground: #ffffff;
+  --civiqhub-background: #ffffff;
+  --civiqhub-shell-surface: #FAFAFA;
+  --civiqhub-muted: #f1f5f9;
+  --civiqhub-border: #e2e8f0;
+  --civiqhub-foreground: #020617;
+  --civiqhub-muted-foreground: #64748b;
+  --civiqhub-success: #047857;
+  --civiqhub-destructive: #dc2626;
+  --civiqhub-radius-sm: 4px;
+  --civiqhub-radius-md: 8px;
+  --civiqhub-radius-lg: 12px;
+  --civiqhub-radius-xl: 16px;
+  --civiqhub-card-banner-from: color-mix(
+    in srgb,
+    var(--civiqhub-primary) 18%,
+    var(--civiqhub-background)
+  );
+  --civiqhub-card-banner-to: color-mix(
+    in srgb,
+    var(--civiqhub-primary) 6%,
+    var(--civiqhub-background)
+  );
+}
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/BricolageGrotesque-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/BricolageGrotesque-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/BricolageGrotesque-Bold.woff2") format("woff2");
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  font-weight: 400;
+  background: var(--civiqhub-background);
+  color: var(--civiqhub-foreground);
+}
+
+.theme-toggle-container {
+  display: none;
+}
+
+/* --- Sidebar ------------------------------------------------------------- */
+
+.sidebar-drawer {
+  background: var(--civiqhub-shell-surface);
+  border-right: 1px solid var(--civiqhub-border);
+}
+
+.sidebar-sticky {
+  padding-top: 0.5rem;
+}
+
+.sidebar-brand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1.15rem 1.15rem 0.85rem;
+  text-align: left;
+}
+
+.sidebar-brand-text {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--civiqhub-foreground);
+}
+
+.civiqhub-mark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  background: var(--civiqhub-foreground);
+  border-radius: var(--civiqhub-radius-lg);
+}
+
+.civiqhub-mark img {
+  width: 1.15rem;
+  height: auto;
+  filter: brightness(0) invert(1);
+}
+
+.sidebar-search-container,
+.sidebar-search-container:hover,
+.sidebar-search-container:focus-within {
+  padding: 0 1.15rem 1rem;
+  background: transparent;
+  border: none;
+}
+
+/* Furo draws a search icon on ::before; the template already has one. */
+.sidebar-search-container::before {
+  content: none;
+  display: none;
+}
+
+#searchbox {
+  display: none;
+}
+
+.civiqhub-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  height: 2rem;
+  padding: 0 0.45rem 0 0.7rem;
+  background: var(--civiqhub-background);
+  border: 1px solid var(--civiqhub-border);
+  border-radius: var(--civiqhub-radius-xl);
+}
+
+.civiqhub-search-icon {
+  display: grid;
+  place-items: center;
+  color: var(--civiqhub-muted-foreground);
+  flex-shrink: 0;
+}
+
+.civiqhub-search .sidebar-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: var(--civiqhub-foreground);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.civiqhub-search .sidebar-search::placeholder {
+  color: var(--civiqhub-muted-foreground);
+}
+
+.civiqhub-search .sidebar-search:focus {
+  outline: none;
+}
+
+.civiqhub-search:focus-within {
+  border-color: var(--civiqhub-primary);
+  box-shadow: 0 0 0 3px rgba(44, 68, 139, 0.12);
+}
+
+.civiqhub-search-keys {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+  padding-right: 0.15rem;
+}
+
+.civiqhub-search-keys kbd {
+  display: inline-block;
+  padding: 0.05rem 0.28rem;
+  border: 1px solid var(--civiqhub-border);
+  border-radius: var(--civiqhub-radius-sm);
+  background: var(--civiqhub-muted);
+  color: var(--civiqhub-muted-foreground);
+  font-family: inherit;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.version-switcher {
+  padding: 0 1.15rem 1rem;
+}
+
+.version-switcher label,
+.sidebar-tree .caption,
+.sidebar-tree .caption-text,
+.toc-title {
+  color: var(--civiqhub-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.version-switcher select {
+  width: 100%;
+  height: 2rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--civiqhub-border);
+  border-radius: var(--civiqhub-radius-md);
+  background: var(--civiqhub-background);
+  color: var(--civiqhub-foreground);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.sidebar-tree {
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+.sidebar-tree .caption,
+.sidebar-tree p.caption {
+  margin: 1.15rem 0 0.35rem;
+  padding: 0 0.35rem;
+}
+
+.sidebar-tree .reference {
+  color: var(--civiqhub-muted-foreground);
+  border-radius: var(--civiqhub-radius-md);
+  padding: 0.38rem 0.7rem;
+}
+
+.sidebar-tree .reference:hover {
+  background: var(--civiqhub-muted);
+  color: var(--civiqhub-foreground);
+}
+
+.sidebar-tree li.current > .reference {
+  background: transparent;
+}
+
+.sidebar-tree .current-page > .reference {
+  background: var(--civiqhub-muted);
+  color: var(--civiqhub-foreground);
+}
+
+.sidebar-scroll {
+  padding-inline: 0.75rem;
+}
+
+/* --- Reading column ------------------------------------------------------ */
+
+.article-container {
+  max-width: 46.5rem;
+}
+
+article[role="main"] {
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+article[role="main"] h1 {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--civiqhub-foreground);
+}
+
+article[role="main"] h2,
+article[role="main"] h3,
+article[role="main"] h4 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--civiqhub-foreground);
+}
+
+article[role="main"] > section > p:first-of-type,
+.civiqhub-home > section > p:first-of-type {
+  font-size: 1.125rem;
+  color: var(--civiqhub-muted-foreground);
+  line-height: 1.6;
+}
+
+.civiqhub-home > section > h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.civiqhub-home > section > h1::before {
+  content: "";
+  display: inline-block;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex-shrink: 0;
+  background: currentColor;
+  mask: url("home.svg") center / contain no-repeat;
+}
+
+.civiqhub-breadcrumb {
+  margin: 0 0 0.35rem;
+}
+
+.civiqhub-breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--civiqhub-muted-foreground);
+}
+
+.civiqhub-breadcrumb li:not(:last-child)::after {
+  content: "/";
+  margin-left: 0.35rem;
+  color: var(--civiqhub-muted-foreground);
+}
+
+.civiqhub-breadcrumb a {
+  color: var(--civiqhub-muted-foreground);
+  text-decoration: none;
+}
+
+.civiqhub-breadcrumb a:hover {
+  color: var(--civiqhub-foreground);
+}
+
+/* --- Home cards ---------------------------------------------------------- */
+
+.civiqhub-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 0.5rem 0 2rem;
+}
+
+.civiqhub-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--civiqhub-border);
+  border-radius: var(--civiqhub-radius-xl);
+  background: var(--civiqhub-background);
+  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.04), 0 8px 24px rgba(2, 6, 23, 0.04);
+  text-decoration: none;
+  color: inherit;
+}
+
+.civiqhub-card:hover {
+  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.05), 0 12px 28px rgba(44, 68, 139, 0.12);
+}
+
+.civiqhub-card-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 10.5rem;
+  padding: 1.5rem 1rem;
+  background:
+    radial-gradient(
+      130% 90% at 18% 0%,
+      var(--civiqhub-card-banner-from),
+      transparent 58%
+    ),
+    linear-gradient(
+      165deg,
+      var(--civiqhub-card-banner-from),
+      var(--civiqhub-card-banner-to)
+    );
+}
+
+.civiqhub-card-banner img {
+  width: 3.1rem;
+  height: auto;
+}
+
+.civiqhub-card-banner span {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--civiqhub-foreground);
+}
+
+.civiqhub-card-body {
+  padding: 1.05rem 1.15rem 1.2rem;
+  border-top: 1px solid var(--civiqhub-border);
+}
+
+.civiqhub-card-title {
+  display: inline-block;
+  margin: 0 0 0.4rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--civiqhub-foreground);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.civiqhub-card-body p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--civiqhub-muted-foreground);
+}
+
+@media (min-width: 48em) {
+  .civiqhub-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* --- Code, admonitions, chrome ------------------------------------------- */
+
+code.literal,
+code:not(.highlight *) {
+  border-radius: var(--civiqhub-radius-sm);
+}
+
+div[class*="highlight-"],
+.highlight,
+pre {
+  border-radius: var(--civiqhub-radius-md);
+}
+
+.highlight {
+  border: 1px solid var(--civiqhub-border);
+}
+
+.admonition {
+  border-radius: var(--civiqhub-radius-md);
+}
+
+.admonition.tip,
+.admonition.hint {
+  border-color: var(--civiqhub-success);
+}
+
+.admonition.danger,
+.admonition.error {
+  border-color: var(--civiqhub-destructive);
+}
+
+.related-pages a {
+  border-radius: var(--civiqhub-radius-md);
+}
+
+.mobile-header {
+  background: var(--civiqhub-background);
+  border-bottom: 1px solid var(--civiqhub-border);
+}
+
+.mobile-header .brand {
+  font-weight: 700;
+}
+
+#search-results {
+  margin-top: 1rem;
+}
+
+#search-results .search li {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--civiqhub-border);
+  border-radius: var(--civiqhub-radius-md);
+}
+
+@media (max-width: 22rem) {
+  .civiqhub-search-keys {
+    display: none;
+  }
+}
