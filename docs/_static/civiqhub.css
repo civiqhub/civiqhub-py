@@ -19,6 +19,16 @@
   --civiqhub-radius-md: 8px;
   --civiqhub-radius-lg: 12px;
   --civiqhub-radius-xl: 16px;
+  --civiqhub-card-banner-from: color-mix(
+    in srgb,
+    var(--civiqhub-primary) 18%,
+    var(--civiqhub-background)
+  );
+  --civiqhub-card-banner-to: color-mix(
+    in srgb,
+    var(--civiqhub-primary) 6%,
+    var(--civiqhub-background)
+  );
 }
 
 @font-face {
@@ -102,16 +112,29 @@ body {
   filter: brightness(0) invert(1);
 }
 
-.sidebar-search-container {
+.sidebar-search-container,
+.sidebar-search-container:hover,
+.sidebar-search-container:focus-within {
   padding: 0 1.15rem 1rem;
   background: transparent;
   border: none;
+}
+
+/* Furo draws a search icon on ::before; the template already has one. */
+.sidebar-search-container::before {
+  content: none;
+  display: none;
+}
+
+#searchbox {
+  display: none;
 }
 
 .civiqhub-search {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  width: 100%;
   height: 2rem;
   padding: 0 0.45rem 0 0.7rem;
   background: var(--civiqhub-background);
@@ -353,9 +376,16 @@ article[role="main"] > section > p:first-of-type,
   min-height: 10.5rem;
   padding: 1.5rem 1rem;
   background:
-    radial-gradient(120% 90% at 18% 0%, rgba(44, 68, 139, 0.2), transparent 58%),
-    radial-gradient(90% 80% at 92% 28%, rgba(44, 68, 139, 0.12), transparent 55%),
-    var(--civiqhub-background);
+    radial-gradient(
+      130% 90% at 18% 0%,
+      var(--civiqhub-card-banner-from),
+      transparent 58%
+    ),
+    linear-gradient(
+      165deg,
+      var(--civiqhub-card-banner-from),
+      var(--civiqhub-card-banner-to)
+    );
 }
 
 .civiqhub-card-banner img {

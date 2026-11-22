@@ -66,16 +66,16 @@ snippets
 
 ```{toctree}
 :hidden:
-:caption: Reference
+:caption: Référence
 
-reference/index
+Référence <reference/index>
 ```
 
 ```{toctree}
 :hidden:
-:caption: Project
+:caption: Projet
 
-Source code <https://github.com/civiqhub/civiqhub-py>
-Contributing <https://github.com/civiqhub/civiqhub-py/blob/develop/CONTRIBUTING.md>
-License <https://github.com/civiqhub/civiqhub-py/blob/develop/LICENSE>
+Code source <https://github.com/civiqhub/civiqhub-py>
+Contribuer <https://github.com/civiqhub/civiqhub-py/blob/develop/CONTRIBUTING.md>
+Licence <https://github.com/civiqhub/civiqhub-py/blob/develop/LICENSE>
 ```
